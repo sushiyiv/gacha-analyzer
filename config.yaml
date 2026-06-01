@@ -1,0 +1,90 @@
+# 穷观阵 - 配置文件
+
+# 游戏显示顺序
+game_order:
+  - genshin
+  - starrail
+  - zzz
+  - wutheringwaves
+  - endfield
+  - arknights
+
+# 数据库路径
+database_path: "data/gacha_records.db"
+
+# 自动备份
+auto_backup: true
+backup_interval_hours: 24
+max_backups: 10
+backup_dir: "data/backups"
+
+# 导出目录
+export_dir: "data/exports"
+
+# API 请求设置
+request_interval: 0.3  # 请求间隔（秒）
+request_timeout: 15    # 请求超时（秒）
+
+# 各游戏缓存路径（相对于用户目录）
+cache_paths:
+  genshin:
+    cn: "AppData/LocalLow/miHoYo/原神/output_log.txt"
+    os: "AppData/LocalLow/Cognosphere/Genshin Impact/output_log.txt"
+  starrail:
+    cn: "AppData/LocalLow/miHoYo/崩坏：星穹铁道/Player.log"
+    os: "AppData/LocalLow/Cognosphere/Star Rail/Player.log"
+  zzz:
+    cn: "AppData/LocalLow/miHoYo/绝区零/output_log.txt"
+    os: "AppData/LocalLow/Cognosphere/ZZZ/output_log.txt"
+  wutheringwaves:
+    cn: "AppData/LocalLow/kurogame/WutheringWaves/Player.log"
+    os: ""
+  endfield:
+    cn: "AppData/LocalLow/Hypergryph/Endfield/sdklogs/HGWebview.log"
+    os: ""
+  arknights:
+    cn: "AppData/LocalLow/Hypergryph/Arknights/sdklogs/HGWebview.log"
+    os: ""
+
+# 卡池类型映射
+gacha_types:
+  genshin:
+    character: "限定角色祈愿"
+    weapon: "限定武器祈愿"
+    chronicled: "集录祈愿"
+    standard: "常驻祈愿"
+    beginner: "新手祈愿"
+  starrail:
+    character: "限定角色跃迁"
+    weapon: "限定光锥跃迁"
+    collab: "联动角色跃迁"
+    collab_weapon: "联动光锥跃迁"
+    standard: "常驻跃迁"
+    beginner: "新手跃迁"
+  zzz:
+    character: "独家频段"
+    weapon: "音擎频段"
+    special: "独家重映"
+    special_weapon: "音擎回响"
+    bangboo: "邦布频段"
+    standard: "常驻频段"
+  wutheringwaves:
+    character: "限定角色唤取"
+    weapon: "限定武器唤取"
+    collab: "联动角色唤取"
+    collab_weapon: "联动武器唤取"
+    selector: "新旅角色唤取"
+    selector_weapon: "新旅武器唤取"
+    standard_character: "常驻角色唤取"
+    standard_weapon: "常驻武器唤取"
+    beginner: "新手唤取"
+  endfield:
+    limited: "特许寻访"
+    joint: "辉光庆典"
+    character: "基础寻访"
+    weapon: "武库申领"
+    beginner: "启程寻访"
+  arknights:
+    standard: "标准寻访"
+    kernel: "中坚寻访"
+    limited: "独立寻访"

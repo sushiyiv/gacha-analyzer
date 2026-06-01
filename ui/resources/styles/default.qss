@@ -1,0 +1,225 @@
+/* 全局样式 */
+* {
+    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+
+QMainWindow {
+    background-color: #f5f5f5;
+}
+
+/* 左侧导航栏 */
+#nav_widget {
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+}
+
+#nav_title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1a73e8;
+    padding: 16px;
+}
+
+/* 导航按钮 - 使用高优先级 */
+QPushButton#nav_button {
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 20px;
+    text-align: left;
+    font-size: 14px;
+    color: #333333;
+    margin: 2px 8px;
+}
+
+QPushButton#nav_button:hover {
+    background-color: #e8f0fe;
+    color: #1a73e8;
+}
+
+QPushButton#nav_button:checked {
+    background-color: #d2e3fc;
+    color: #1a73e8;
+    font-weight: bold;
+}
+
+/* 游戏选择按钮 - 使用高优先级 */
+QPushButton#game_button {
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    min-width: 80px;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+QPushButton#game_button:hover {
+    border-color: #1a73e8;
+    color: #1a73e8;
+    background-color: #f0f7ff;
+}
+
+QPushButton#game_button:checked {
+    border-color: #1a73e8;
+    background-color: #d2e3fc;
+    color: #1a73e8;
+    font-weight: bold;
+}
+
+/* 卡片 */
+#card {
+    background-color: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e8e8e8;
+    padding: 16px;
+}
+
+/* 统计数字 */
+#stat_number {
+    font-size: 28px;
+    font-weight: bold;
+    color: #1a73e8;
+}
+
+#stat_label {
+    font-size: 12px;
+    color: #888888;
+}
+
+/* 普通按钮（非导航） */
+QPushButton:not(#nav_button):not(#game_button) {
+    background-color: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    min-height: 20px;
+}
+
+QPushButton:not(#nav_button):not(#game_button):hover {
+    background-color: #1557b0;
+}
+
+QPushButton:not(#nav_button):not(#game_button):pressed {
+    background-color: #0d47a1;
+}
+
+QPushButton:not(#nav_button):not(#game_button):disabled {
+    background-color: #cccccc;
+    color: #666666;
+}
+
+/* 输入框 */
+QLineEdit, QTextEdit, QComboBox {
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background-color: #ffffff;
+    font-size: 13px;
+}
+
+QLineEdit:focus, QTextEdit:focus {
+    border-color: #1a73e8;
+}
+
+/* 表格 */
+QTableWidget {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: #ffffff;
+    gridline-color: #f0f0f0;
+    selection-background-color: #e8f0fe;
+}
+
+QTableWidget::item {
+    padding: 6px;
+}
+
+QHeaderView::section {
+    background-color: #f8f8f8;
+    border: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px;
+    font-weight: bold;
+    color: #555555;
+}
+
+/* 进度条 */
+QProgressBar {
+    border: none;
+    border-radius: 6px;
+    background-color: #e0e0e0;
+    text-align: center;
+    height: 12px;
+}
+
+QProgressBar::chunk {
+    border-radius: 6px;
+    background-color: #1a73e8;
+}
+
+/* 滚动条 */
+QScrollBar:vertical {
+    border: none;
+    background-color: transparent;
+    width: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #c0c0c0;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+/* 分割线 */
+QFrame[frameShape="4"] {
+    color: #e0e0e0;
+    max-height: 1px;
+}
+
+/* GroupBox */
+QGroupBox {
+    font-weight: bold;
+    font-size: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 16px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 8px;
+}
+
+/* 复选框样式 */
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #bbb;
+    border-radius: 3px;
+    background-color: white;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #1a73e8;
+    border-color: #1a73e8;
+}
+
+QCheckBox::indicator:indeterminate {
+    background-color: #1a73e8;
+    border-color: #1a73e8;
+}
