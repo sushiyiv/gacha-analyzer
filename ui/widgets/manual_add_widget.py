@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont
 
 from core.database import Database
 from core.models import GachaRecord, GAME_NAMES, POOL_CONFIGS, MAX_RARITY
+from ui.widgets.styled_widgets import StyledCheckBox
 
 
 class ManualAddWidget(QWidget):
@@ -66,7 +67,7 @@ class ManualAddWidget(QWidget):
 
         # 是否UP
         form.addWidget(QLabel("是否UP:"), 2, 0)
-        self.featured_check = QCheckBox("UP物品")
+        self.featured_check = StyledCheckBox("UP物品")
         form.addWidget(self.featured_check, 2, 1)
 
         # 时间

@@ -244,6 +244,13 @@ class MihoyoAPI:
         else:
             rarity = rank_type
         item_name = raw.get("name", "未知")
+        # ZZZ: 根据 item_type 修正卡池分类（API 可能把邦布归入错误的卡池）
+        if game == "zzz":
+            item_type_raw = raw.get("item_type", "")
+            if "邦布" in item_type_raw and pool_type != "bangboo":
+                pool_type = "bangboo"
+            elif "音擎" in item_type_raw and pool_type == "bangboo":
+                pool_type = "special_weapon"
         item_type = raw.get("item_type", "")
         record_time = raw.get("time", "")  # 抽卡时间，格式: "2025-04-09 12:00:00"
 

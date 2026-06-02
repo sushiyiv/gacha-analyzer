@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon, QAction
 
-from ui.widgets.game_list import GameListDelegate, GameListWidget
+from ui.widgets.game_list import GameListDelegate, GameListWidget, CheckListDelegate
 
 from core.database import Database
 from core.config import Config
@@ -250,14 +250,15 @@ class MainWindow(QMainWindow):
         dialog.setMinimumHeight(350)
         layout = QVBoxLayout(dialog)
 
-        header = QLabel("双击选择/取消，长按拖动排序:")
+        header = QLabel("点击选择/取消，长按拖动排序:")
         header.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px;")
         layout.addWidget(header)
 
         list_widget = GameListWidget()
         list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
-        list_widget.setItemDelegate(GameListDelegate(list_widget))
+        list_widget.setItemDelegate(CheckListDelegate(list_widget))
+        list_widget.setStyleSheet("QListWidget { background-color: #ffffff; border: 1px solid #e0e0e0; }")
 
         for gid in self._game_order:
             item = QListWidgetItem(GAME_NAMES.get(gid, gid))

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QColor
 
-from ui.widgets.game_list import GameListDelegate, GameListWidget
+from ui.widgets.game_list import GameListDelegate, GameListWidget, CheckListDelegate
 import shiboken6
 
 from core.database import Database
@@ -554,14 +554,15 @@ class HomeWidget(QWidget):
         dialog.setMinimumHeight(350)
         layout = QVBoxLayout(dialog)
 
-        header = QLabel("双击选择/取消，长按拖动排序:")
+        header = QLabel("点击选择/取消，长按拖动排序:")
         header.setStyleSheet("font-size: 13px; font-weight: bold; padding: 4px;")
         layout.addWidget(header)
 
         list_widget = GameListWidget()
         list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
-        list_widget.setItemDelegate(GameListDelegate(list_widget))
+        list_widget.setItemDelegate(CheckListDelegate(list_widget))
+        list_widget.setStyleSheet("QListWidget { background-color: #ffffff; border: 1px solid #e0e0e0; }")
 
         # 按当前顺序填充
         for pt in current_order:
@@ -688,12 +689,13 @@ class HomeWidget(QWidget):
         dialog.setMinimumHeight(300)
         layout = QVBoxLayout(dialog)
 
-        header = QLabel("双击选择/取消显示的星级:")
+        header = QLabel("点击选择/取消显示的星级:")
         header.setStyleSheet("font-size: 13px; font-weight: bold; padding: 4px;")
         layout.addWidget(header)
 
         list_widget = GameListWidget()
-        list_widget.setItemDelegate(GameListDelegate(list_widget))
+        list_widget.setItemDelegate(CheckListDelegate(list_widget))
+        list_widget.setStyleSheet("QListWidget { background-color: #ffffff; border: 1px solid #e0e0e0; }")
 
         star_labels = {3: "三星", 4: "四星", 5: "五星", 6: "六星"}
         for star in range(max_rarity, 0, -1):

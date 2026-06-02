@@ -984,6 +984,13 @@ class ImportWidget(QWidget):
                 "4001": "special",
                 "5001": "special_weapon",
                 "6001": "bangboo",
+                # 兼容 API 新短格式
+                "1": "standard",
+                "2": "character",
+                "3": "weapon",
+                "4": "special",
+                "5": "special_weapon",
+                "6": "bangboo",
             },
         }
 

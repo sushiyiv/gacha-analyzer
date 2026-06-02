@@ -5,7 +5,38 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QCheckBox, QMessageBox, QComboBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
+from ui.widgets.styled_widgets import StyledCheckBox
+
+
+class _LoginWorker(QThread):
+    """后台线程执行登录 API 请求"""
+    success = Signal(str)   # 登录成功，传递 token
+    error = Signal(str)     # 登录失败，传递错误信息
+
+    def __init__(self, account, password):
+        super().__init__()
+        self._account = account
+        self._password = password
+
+    def run(self):
+        try:
+            url = "https://as.hypergryph.com/user/auth/v1/token_by_phone_password"
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            data = {"phone": self._account, "password": self._password}
+            resp = requests.post(url, json=data, headers=headers, timeout=15)
+            result = resp.json()
+            if result.get("status") == 0:
+                token = result.get("data", {}).get("token", "")
+                self.success.emit(token)
+            else:
+                msg = result.get("msg", "未知错误")
+                self.error.emit(msg)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class ArknightsLoginApiDialog(QDialog):
@@ -15,9 +46,14 @@ class ArknightsLoginApiDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("明日方舟 - 登录鹰角账号")
         self.setMinimumSize(420, 320)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+        self.setWindowFlags(
+            self.windowFlags()
+            & ~Qt.WindowType.WindowContextHelpButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
 
         self._token = None
+        self._closing = False
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
@@ -34,8 +70,11 @@ class ArknightsLoginApiDialog(QDialog):
         account_layout.addWidget(QLabel("账号:"))
         self.account_combo = QComboBox()
         self.account_combo.setEditable(True)
+        self.account_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.account_combo.setMinimumWidth(250)
-        self.account_combo.currentIndexChanged.connect(self._on_account_selected)
+        self.account_combo.currentTextChanged.connect(self._on_account_selected)
+        # 禁用自动补全，避免输入一个数字就匹配到已保存账号
+        self.account_combo.setCompleter(None)
         account_layout.addWidget(self.account_combo)
         layout.addLayout(account_layout)
 
@@ -51,7 +90,7 @@ class ArknightsLoginApiDialog(QDialog):
         layout.addLayout(password_layout)
 
         # 记住密码
-        self.remember_cb = QCheckBox("记住密码")
+        self.remember_cb = StyledCheckBox("记住密码")
         layout.addWidget(self.remember_cb)
 
         # 状态提示
@@ -88,6 +127,16 @@ class ArknightsLoginApiDialog(QDialog):
         # 加载保存的账号列表
         self._load_saved_accounts()
 
+    def closeEvent(self, event):
+        """点击右上角 × 关闭对话框"""
+        self._closing = True
+        # 停止后台线程
+        if hasattr(self, '_worker') and self._worker.isRunning():
+            self._worker.terminate()
+            self._worker.wait()
+        self.reject()
+        event.accept()
+
     def _load_saved_accounts(self):
         """加载保存的账号列表（共享鹰角账号）"""
         from core.config import Config
@@ -99,20 +148,23 @@ class ArknightsLoginApiDialog(QDialog):
         if old_arknights:
             saved_accounts.update(old_arknights)
 
+        # 屏蔽信号，避免 addItem 期间反复触发 _on_account_selected
+        self.account_combo.blockSignals(True)
         self.account_combo.clear()
-        self.account_combo.addItem("")
+        self.account_combo.addItem("添加账号")
 
         for account in saved_accounts.keys():
             self.account_combo.addItem(account)
+
+        self.account_combo.blockSignals(False)
 
         if saved_accounts:
             self.account_combo.setCurrentIndex(1)
             self.remember_cb.setChecked(True)
 
-    def _on_account_selected(self, index):
-        """账号选择变化"""
-        account = self.account_combo.currentText()
-        if not account:
+    def _on_account_selected(self, account):
+        """账号选择/输入变化"""
+        if not account or account == "添加账号":
             self.password_input.clear()
             return
 
@@ -181,50 +233,29 @@ class ArknightsLoginApiDialog(QDialog):
         self.login_btn.setText("登录中...")
         self.status_label.setText("正在登录...")
 
-        try:
-            # 调用鹰角登录 API
-            token = self._login_api(account, password)
-            if token:
-                self._token = token
-                self._save_account()
-                self.status_label.setText("✓ 登录成功！")
-                self.status_label.setStyleSheet("color: #4CAF50; font-size: 12px; font-weight: bold;")
-                # 延迟关闭对话框
-                from PySide6.QtCore import QTimer
-                QTimer.singleShot(500, self.accept)
-            else:
-                self.status_label.setText("登录失败，请检查账号密码")
-                self.status_label.setStyleSheet("color: #F44336; font-size: 12px;")
-        except Exception as e:
-            self.status_label.setText(f"登录出错: {str(e)}")
-            self.status_label.setStyleSheet("color: #F44336; font-size: 12px;")
-        finally:
-            self.login_btn.setEnabled(True)
-            self.login_btn.setText("登录")
+        # 在后台线程执行网络请求，避免阻塞 UI
+        self._worker = _LoginWorker(account, password)
+        self._worker.success.connect(self._on_login_success)
+        self._worker.error.connect(self._on_login_error)
+        self._worker.start()
 
-    def _login_api(self, account: str, password: str) -> str:
-        """调用鹰角登录 API"""
-        # 鹰角账号登录 API
-        url = "https://as.hypergryph.com/user/auth/v1/token_by_phone_password"
+    def _on_login_success(self, token):
+        """登录成功回调"""
+        self._token = token
+        self._save_account()
+        self.status_label.setText("✓ 登录成功！")
+        self.status_label.setStyleSheet("color: #4CAF50; font-size: 12px; font-weight: bold;")
+        self.login_btn.setEnabled(True)
+        self.login_btn.setText("登录")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, self.accept)
 
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-
-        data = {
-            "phone": account,
-            "password": password
-        }
-
-        resp = requests.post(url, json=data, headers=headers, timeout=15)
-        result = resp.json()
-
-        if result.get("status") == 0:
-            return result.get("data", {}).get("token", "")
-        else:
-            msg = result.get("msg", "未知错误")
-            raise Exception(msg)
+    def _on_login_error(self, msg):
+        """登录失败回调"""
+        self.status_label.setText(f"登录出错: {msg}")
+        self.status_label.setStyleSheet("color: #F44336; font-size: 12px;")
+        self.login_btn.setEnabled(True)
+        self.login_btn.setText("登录")
 
     def get_token(self) -> str:
         return self._token
