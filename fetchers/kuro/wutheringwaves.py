@@ -1,4 +1,4 @@
-"""鸣潮抽卡记录获取器"""
+﻿"""鸣潮抽卡记录获取器"""
 
 import requests
 from urllib.parse import parse_qs
@@ -45,6 +45,11 @@ STANDARD_5STAR_WEAPONS = {
     # 3.0版本新增5把
     "源能机锋", "镭射切变", "相位涟漪", "脉冲协臂", "玻色星仪",
 }
+
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WutheringWavesFetcher(BaseFetcher):
@@ -142,7 +147,7 @@ class WutheringWavesFetcher(BaseFetcher):
             if code != 0:
                 msg = data.get("message", data.get("msg", "未知错误"))
                 # 某些卡池可能已被移除，跳过继续获取
-                print(f"[WARN] {pool_name} (type={card_pool_type}) 获取失败: {msg}")
+                logger.warning(f" {pool_name} (type={card_pool_type}) 获取失败: {msg}")
                 continue
 
             # API直接返回列表

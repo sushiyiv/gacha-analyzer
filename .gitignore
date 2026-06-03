@@ -1,29 +1,56 @@
-# 个人数据（包含抽卡记录和账号信息）
+﻿# ===== 个人数据（抽卡记录、账号信息、用户配置）=====
 data/gacha_records.db
 data/gacha_records.db-shm
 data/gacha_records.db-wal
 data/backups/
 data/exports/
 data/user_config.yaml
-debug_*.log
 
-# Python缓存
+# ===== 日志 =====
+debug_*.log
+*.log
+
+# ===== Python =====
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.egg-info/
+*.egg
+dist-info/
+*.whl
+pip-log.txt
+pip-delete-this-directory.txt
 
-# 构建产物
+# ===== 虚拟环境 =====
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# ===== 构建产物（PyInstaller）=====
 build/
 dist/
-*.spec
 
-# IDE
+# ===== IDE / 编辑器 =====
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+.code-workspace
 
-# 系统文件
+# ===== 操作系统 =====
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+.BIN/
+# ===== 运行日志 =====
+data/logs/
+

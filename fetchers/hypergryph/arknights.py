@@ -1,4 +1,4 @@
-"""明日方舟抽卡记录获取器"""
+﻿"""明日方舟抽卡记录获取器"""
 
 import os
 import re
@@ -10,6 +10,11 @@ from typing import List, Optional
 from urllib.parse import unquote
 from fetchers.base import BaseFetcher, FetcherError
 from core.models import GachaRecord, ARKNIGHTS_POOL_MECHANIC_MAP, ARKNIGHTS_MECHANIC_TO_GROUP
+
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ArknightsFetcher(BaseFetcher):

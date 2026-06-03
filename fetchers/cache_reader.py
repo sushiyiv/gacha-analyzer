@@ -98,41 +98,84 @@ class CacheReader:
                 ]
         elif game == "wutheringwaves":
             # 鸣潮日志在游戏安装目录 Client/Saved/Logs/Client.log
-            # 先检查常见安装路径（快速），再搜索（慢速）
-            common_paths = [
-                Path("E:/Program File/Wuthering Waves"),
-                Path("D:/Program File/Wuthering Waves"),
-                Path("C:/Program Files/Wuthering Waves"),
-                Path("E:/Wuthering Waves"),
-                Path("D:/Wuthering Waves"),
-            ]
-            for base in common_paths:
+            # 1. 先查注册表
+            try:
+                import winreg
+                for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+                    for subkey in [
+                        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                    ]:
+                        try:
+                            key = winreg.OpenKey(hive, subkey)
+                            i = 0
+                            while True:
+                                try:
+                                    sub = winreg.EnumKey(key, i)
+                                    sub_k = winreg.OpenKey(key, sub)
+                                    try:
+                                        name = winreg.QueryValueEx(sub_k, "DisplayName")[0]
+                                        if "wuthering" in name.lower() or name == "\u9e23\u6f6e":
+                                            loc = ""
+                                            try:
+                                                loc = winreg.QueryValueEx(sub_k, "InstallLocation")[0]
+                                            except Exception:
+                                                pass
+                                            if loc and os.path.isdir(loc):
+                                                log = Path(loc) / "Wuthering Waves Game" / "Client" / "Saved" / "Logs" / "Client.log"
+                                                if log.exists():
+                                                    paths.append(str(log))
+                                                    return paths
+                                                # 尝试直接在安装目录下找
+                                                log2 = Path(loc) / "Client" / "Saved" / "Logs" / "Client.log"
+                                                if log2.exists():
+                                                    paths.append(str(log2))
+                                                    return paths
+                                    finally:
+                                        winreg.CloseKey(sub_k)
+                                    i += 1
+                                except OSError:
+                                    break
+                            winreg.CloseKey(key)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # 2. 注册表没找到，搜索所有磁盘
+            import string as _string
+            search_dirs = []
+            for letter in _string.ascii_uppercase:
+                drive = Path(f"{letter}:/")
+                if not drive.exists():
+                    continue
+                # 常见游戏安装目录
+                for subdir in ["Program Files", "Program File", "Program Files (x86)",
+                               "Games", "Game", ""]:
+                    try:
+                        base = drive / subdir if subdir else drive
+                        if not base.exists() or not base.is_dir():
+                            continue
+                        for p in base.iterdir():
+                            if not p.is_dir():
+                                continue
+                            name_lower = p.name.lower()
+                            if "wuthering" in name_lower or "鸣潮" in name_lower:
+                                search_dirs.append(p)
+                    except (PermissionError, OSError):
+                        continue
+
+            for base in search_dirs:
                 log = base / "Wuthering Waves Game" / "Client" / "Saved" / "Logs" / "Client.log"
                 if log.exists():
                     paths.append(str(log))
                     return paths
-
-            # 兜底：搜索磁盘根目录下一层
-            for drive in [Path("C:/"), Path("D:/"), Path("E:/")]:
-                if not drive.exists():
-                    continue
-                try:
-                    for p in drive.iterdir():
-                        if not p.is_dir():
-                            continue
-                        for exe_name in ["WutheringWaves.exe", "Wuthering Waves.exe"]:
-                            log = p / "Wuthering Waves Game" / "Client" / "Saved" / "Logs" / "Client.log"
-                            if log.exists():
-                                paths.append(str(log))
-                                return paths
-                except (PermissionError, OSError):
-                    continue
         return paths
 
     def extract_url(self, game: str, region: str = "cn") -> Optional[str]:
         """从缓存文件中提取抽卡 API URL"""
-        # 原神：直接从日志文件读取 URL
-        if game == "genshin":
+        # 所有米哈游游戏：优先从日志文件读取 URL
+        if game in ("genshin", "starrail", "zzz"):
             log_path = self.config.get_cache_path(game, region)
             if log_path and os.path.exists(log_path):
                 url = self._parse_cache_file(log_path, game)

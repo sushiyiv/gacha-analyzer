@@ -1,5 +1,4 @@
-"""主窗口 - 左侧导航 + 右侧内容区"""
-
+﻿import logging
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -22,24 +21,23 @@ from ui.widgets.stats_widget import StatsWidget
 from ui.widgets.chart_widget import ChartWidget
 from ui.widgets.settings_widget import SettingsWidget
 
+logger = logging.getLogger(__name__)
+
 
 class MainWindow(QMainWindow):
-    """主窗口"""
 
     def __init__(self):
         super().__init__()
         self.db = Database()
         self.config = Config()
         self.current_account = None
-        self.current_game = "genshin"  # 默认值，后面会更新
-
+        self.current_game = "genshin"
         self._init_ui()
         self._load_style()
 
-        # 启动时自动更新明日方舟卡池分类
         self._auto_update_arknights_pools()
 
-        # 启动时恢复上次选择的游戏，没有则用第一个可见游戏
+        # Restore last selected game, fallback to first visible
         last_game = self.config.get("last_game", "")
         if last_game and last_game in self._visible_games:
             self._on_game_changed(last_game)
@@ -48,21 +46,16 @@ class MainWindow(QMainWindow):
             self._on_game_changed(first)
 
     def _auto_update_arknights_pools(self):
-        """启动时自动更新明日方舟卡池分类"""
         from PySide6.QtCore import QTimer
 
         def do_update():
             try:
-                from ui.widgets.settings_widget import SettingsWidget
-                # 创建临时实例来调用更新方法
-                settings = SettingsWidget(self)
-                updated = settings._do_update_arknights_pool_types()
+                updated = self.settings_page._do_update_arknights_pool_types()
                 if updated > 0:
-                    print(f"自动更新明日方舟卡池分类: {updated} 条记录")
-            except Exception as e:
-                print(f"自动更新卡池分类失败: {e}")
+                    logger.info("auto-update arknights pool types: %d records", updated)
+            except Exception:
+                logger.exception("auto-update arknights pool types failed")
 
-        # 使用 QTimer 延迟执行，避免阻塞启动
         QTimer.singleShot(1000, do_update)
 
     def _init_ui(self):
@@ -80,7 +73,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ===== 左侧导航 =====
+        # Left nav
         nav_widget = QWidget()
         nav_widget.setObjectName("nav_widget")
         nav_widget.setFixedWidth(200)
@@ -88,7 +81,6 @@ class MainWindow(QMainWindow):
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(0)
 
-        # 游戏选择区
         game_frame = QFrame()
         game_layout = QVBoxLayout(game_frame)
         game_layout.setContentsMargins(12, 8, 12, 8)
@@ -106,7 +98,6 @@ class MainWindow(QMainWindow):
         self._visible_games = self.config.get("visible_games", list(GAME_NAMES.keys()))
         self._visible_games = [g for g in self._visible_games if g in GAME_NAMES]
 
-        # 游戏按钮滚动区域
         self._game_scroll = QScrollArea()
         self._game_scroll.setWidgetResizable(True)
         self._game_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -119,13 +110,11 @@ class MainWindow(QMainWindow):
 
         self.game_buttons = {}
         self._rebuild_game_buttons()
-        self._game_layout.addStretch()
 
         self._game_scroll.setWidget(scroll_content)
         self._game_scroll.setMinimumHeight(220)
         game_layout.addWidget(self._game_scroll)
 
-        # 更多游戏按钮（常驻）
         more_btn = QPushButton("游戏管理")
         more_btn.setObjectName("game_button")
         more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -142,13 +131,11 @@ class MainWindow(QMainWindow):
 
         nav_layout.addWidget(game_frame)
 
-        # 分割线
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setStyleSheet("color: #e0e0e0; margin: 8px 16px;")
         nav_layout.addWidget(line)
 
-        # 导航按钮
         self.nav_buttons = {}
         nav_items = [
             ("home", "总览"), ("import", "获取数据"), ("manual", "手动添加"),
@@ -172,7 +159,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(nav_widget)
 
-        # ===== 右侧内容区 =====
+        # Right content
         content_widget = QWidget()
         content_widget.setStyleSheet("background-color: #f5f5f5;")
         content_layout = QVBoxLayout(content_widget)
@@ -207,23 +194,17 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons["home"].setChecked(True)
         if self.game_buttons:
-            # 选中第一个可见游戏（不是 _game_order 第一个，可能被隐藏了）
             first_visible = next((g for g in self._game_order if g in self.game_buttons), None)
             if first_visible:
                 self.game_buttons[first_visible].setChecked(True)
 
     def _rebuild_game_buttons(self):
-        """重建游戏按钮列表"""
-        for btn in self.game_buttons.values():
-            btn.setParent(None)
-            btn.deleteLater()
-        self.game_buttons.clear()
-
-        # 清除布局中的所有项（包括旧的 stretch）
         while self._game_layout.count():
             item = self._game_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.game_buttons.clear()
 
         for game_id in self._game_order:
             if game_id not in self._visible_games:
@@ -243,14 +224,13 @@ class MainWindow(QMainWindow):
         return btn
 
     def _show_game_manager(self):
-        """显示游戏管理对话框 - 双击选择，长按拖动"""
         dialog = QDialog(self)
         dialog.setWindowTitle("管理游戏")
         dialog.setMinimumWidth(300)
         dialog.setMinimumHeight(350)
         layout = QVBoxLayout(dialog)
 
-        header = QLabel("点击选择/取消，长按拖动排序:")
+        header = QLabel("点击选择/取消，长按拖动排序")
         header.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px;")
         layout.addWidget(header)
 
@@ -289,12 +269,10 @@ class MainWindow(QMainWindow):
             self.config.set("visible_games", self._visible_games)
             self.config.save()
             self._rebuild_game_buttons()
-            # 当前游戏被隐藏时，跳到第一个可见游戏
             if self.current_game not in self._visible_games:
                 self._on_game_changed(self._visible_games[0])
             else:
                 self.game_buttons[self.current_game].setChecked(True)
-
 
     def _load_style(self):
         qss_path = os.path.join(os.path.dirname(__file__), "resources", "styles", "default.qss")
@@ -345,7 +323,3 @@ class MainWindow(QMainWindow):
 
     def refresh_all(self):
         self._on_game_changed(self.current_game)
-
-
-
-
