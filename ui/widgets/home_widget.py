@@ -14,7 +14,7 @@ import shiboken6
 
 from core.database import Database
 from core.config import Config
-from core.models import BANNER_CONFIGS, get_max_rarity, get_pool_names, get_mechanic_type
+from core.models import BANNER_CONFIGS, get_max_rarity, get_pity_rarity, get_pool_names, get_mechanic_type
 
 
 class HomeWidget(QWidget):
@@ -807,7 +807,7 @@ class HomeWidget(QWidget):
         """更新单个标签页的统计和表格"""
         stat_items = tab._stat_items
         pool_type = tab._pool_type
-        max_rarity = get_max_rarity(game)
+        max_rarity = get_pity_rarity(game, pool_type)
 
         sorted_records = sorted(records, key=lambda r: (r.time, r.id))
         total = len(records)

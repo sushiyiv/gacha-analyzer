@@ -360,7 +360,7 @@ class SettingsWidget(QWidget):
         """执行更新明日方舟卡池分类"""
         import ast
 
-        conn = self.db._get_conn()
+        conn = self.db._ensure_conn()
         rows = conn.execute(
             "SELECT id, pool_name, raw_data FROM gacha_records WHERE game='arknights'"
         ).fetchall()

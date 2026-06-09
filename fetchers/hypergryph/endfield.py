@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from typing import List, Optional, Tuple
 from fetchers.base import BaseFetcher, FetcherError
-from core.models import GachaRecord
+from core.models import GachaRecord, ENDFIELD_STANDARD_6STAR
 
 # 终末地角色池类型
 CHAR_POOL_TYPES = [
@@ -255,16 +255,20 @@ class EndfieldFetcher(BaseFetcher):
                         has_more = False  # 遇到旧记录，后续页面更旧，停止
 
                 for raw in records_list:
+                    item_name = raw.get("charName", "未知")
+                    rarity = int(raw.get("rarity", 3))
+                    # 6星：不在常驻列表中 = UP物品
+                    is_featured = (rarity == 6 and item_name not in ENDFIELD_STANDARD_6STAR)
                     record = GachaRecord(
                         account_id=0,
                         game="endfield",
                         pool_type=internal_pool_type,
                         pool_name=raw.get("poolName", ""),
                         item_id=str(raw.get("seqId", "")),
-                        item_name=raw.get("charName", "未知"),
+                        item_name=item_name,
                         item_type="角色",
-                        rarity=int(raw.get("rarity", 3)),
-                        is_featured=False,
+                        rarity=rarity,
+                        is_featured=is_featured,
                         count=1,
                         time=_parse_gacha_ts(raw.get("gachaTs", "")),
                         gacha_id=raw.get("poolId", ""),
@@ -345,16 +349,20 @@ class EndfieldFetcher(BaseFetcher):
                         has_more = False
 
                 for raw in records_list:
+                    item_name = raw.get("weaponName", "未知")
+                    rarity = int(raw.get("rarity", 3))
+                    # 6星：不在常驻列表中 = UP物品
+                    is_featured = (rarity == 6 and item_name not in ENDFIELD_STANDARD_6STAR)
                     record = GachaRecord(
                         account_id=0,
                         game="endfield",
                         pool_type="weapon",
                         pool_name=raw.get("poolName", ""),
                         item_id=str(raw.get("seqId", "")),
-                        item_name=raw.get("weaponName", "未知"),
+                        item_name=item_name,
                         item_type="武器",
-                        rarity=int(raw.get("rarity", 3)),
-                        is_featured=False,
+                        rarity=rarity,
+                        is_featured=is_featured,
                         count=1,
                         time=_parse_gacha_ts(raw.get("gachaTs", "")),
                         gacha_id=pool_id,
