@@ -304,7 +304,7 @@ BANNER_CONFIGS = {
         featured_guarantee_rate=0.5, has_guarantee=True,
         multi_pity_size=10, multi_pity_rarity=5,
         up_hard_pity=120, up_hard_pity_inherits=False,
-        description="限定池，50/50小保底可继承，120抽大保底不继承",
+        description="限定池，50/50小保底跨卡池继承，120抽大保底不继承",
     ),
     ("endfield", "joint"): BannerConfig(
         game="endfield", pool_type="joint", name="辉光庆典",
@@ -312,7 +312,7 @@ BANNER_CONFIGS = {
         soft_pity_start=66, hard_pity=80, soft_pity_increment=0.05,
         featured_guarantee_rate=0.5, has_guarantee=True,
         multi_pity_size=10, multi_pity_rarity=5,
-        description="联合寻访，多UP池，保底与限定池共享",
+        description="联合寻访，多UP池，保底独立计算",
     ),
     ("endfield", "weapon"): BannerConfig(
         game="endfield", pool_type="weapon", name="武库申领",
@@ -320,7 +320,8 @@ BANNER_CONFIGS = {
         soft_pity_start=30, hard_pity=40, soft_pity_increment=0.05,
         featured_guarantee_rate=0.25, has_guarantee=True,
         up_hard_pity=80, up_hard_pity_inherits=False,
-        description="武器池，40抽小保底(25%UP)可继承，80抽大保底不继承",
+        multi_pity_size=10, multi_pity_rarity=5,
+        description="武器池，40抽小保底(25%UP)换卡池名清空，80抽大保底不继承",
     ),
     # ===== 明日方舟（按保底机制分 4 组）=====
     ("arknights", "standard"): BannerConfig(
@@ -362,6 +363,37 @@ MAX_RARITY = {
 def get_max_rarity(game: str) -> int:
     """获取游戏的最高星级"""
     return MAX_RARITY.get(game, 5)
+
+
+# 终末地常驻6星（不在列表中的6星 = UP/限定物品）
+ENDFIELD_STANDARD_6STAR = {
+    # 常驻角色
+    "艾尔黛拉", "骏卫", "余烬", "黎风", "别礼",
+    # 常驻武器 - 单手剑
+    "黯色火炬", "不知归", "热熔切割器", "宏愿", "扶摇",
+    "白夜新星", "显赫声名", "五号遗产", "忘机", "湍流", "幽蓝回唱",
+    # 常驻武器 - 双手剑
+    "赫拉芬格", "破碎君王", "大雷斑", "昔日精品", "典范", "阿布拉克萨斯",
+    # 常驻武器 - 长枪
+    "负山", "骁勇", "J.E.T", "塔罗斯旋涡",
+    # 常驻武器 - 手铳
+    "楔子", "领航者", "同类相食", "望乡",
+    # 常驻武器 - 施术单元
+    "作品：蚀象", "沧溟星梦", "骑士精神", "爆破单元", "遗忘", "镀红祝福",
+}
+
+
+def get_pity_rarity(game: str, pool_type: str = None) -> int:
+    """获取十连保底所依据的星级（用于 multi_pity 显示，非主保底计数）"""
+    if pool_type is not None:
+        config = BANNER_CONFIGS.get((game, pool_type))
+        if config and config.multi_pity_rarity > 0:
+            return config.multi_pity_rarity
+    else:
+        for (g, pt), config in BANNER_CONFIGS.items():
+            if g == game and config.multi_pity_rarity > 0:
+                return config.multi_pity_rarity
+    return get_max_rarity(game)
 
 
 # 各游戏卡池配置: [(pool_type, 显示名称)]
@@ -418,6 +450,27 @@ POOL_CONFIGS = {
 def get_pool_names(game: str) -> list:
     """获取游戏的卡池列表 [(pool_type, 显示名称)]"""
     return POOL_CONFIGS.get(game, POOL_CONFIGS.get("genshin", []))
+
+
+# 终末地：保底分组
+# limited/joint/character/beginner 跨卡池轮换继承保底（不按 pool_name 分组）
+# 武器池换名字清空保底（按 pool_name 分组）
+ENDFIELD_PITY_GROUP = {
+    "limited": "limited",
+    "joint": "joint",         # 辉光庆典与限定池分开计算
+    "character": "character",
+    "weapon": "weapon",
+    "beginner": "beginner",
+}
+
+
+def get_endfield_pity_group(pool_type: str) -> str:
+    """获取终末地卡池的保底分组"""
+    return ENDFIELD_PITY_GROUP.get(pool_type, pool_type)
+
+
+# 终末地：换卡池名字时保底会重置的池类型（武器池）
+ENDFIELD_PITY_RESETS_ON_NAME_CHANGE = {"weapon"}
 
 
 # 明日方舟：具体卡池名 → 机制类型

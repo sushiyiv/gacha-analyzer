@@ -10,7 +10,7 @@ from PySide6.QtGui import QFont, QColor
 
 from core.database import Database
 from core.analyzer import PityAnalyzer, StatsAnalyzer
-from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names
+from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names, get_endfield_pity_group, ENDFIELD_PITY_GROUP, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
 
 
 class StatsWidget(QWidget):
@@ -298,6 +298,17 @@ class StatsWidget(QWidget):
 
         if pool_type is None:
             records = self.db.get_records(account.id)
+        elif game == "endfield" and pool_type:
+            pity_group = get_endfield_pity_group(pool_type)
+            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
+                # 武器池：不加载共享记录
+                records = self.db.get_records(account.id, pool_type)
+            else:
+                # 其他池：加载同组所有记录（跨卡池轮换继承保底）
+                shared_types = [pt for pt, g in ENDFIELD_PITY_GROUP.items() if g == pity_group]
+                records = []
+                for pt in shared_types:
+                    records.extend(self.db.get_records(account.id, pt))
         else:
             records = self.db.get_records(account.id, pool_type)
 

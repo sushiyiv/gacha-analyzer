@@ -122,11 +122,18 @@ class PityAnalyzer:
             if t <= self.config.hard_pity or (self.config.up_hard_pity and t <= self.config.up_hard_pity):
                 prob_table[t] = get_pull_probability(self.config, current_pity, t)
 
-        # UP硬保底进度
+        # UP硬保底进度（追踪距离上次UP 6星的抽数，非任意6星）
         up_hard_pity_remaining = 0
         if self.config.up_hard_pity > 0:
-            # 统计当前垫了多少抽（从上次出6星算起，或从上次歪6星后的大保底重置点算起）
-            up_hard_pity_remaining = max(0, self.config.up_hard_pity - current_pity)
+            last_featured_idx = -1
+            for i, r in enumerate(sorted_records):
+                if r.rarity == max_rarity and r.is_featured:
+                    last_featured_idx = i
+            if last_featured_idx >= 0:
+                pulls_since_featured = len(sorted_records) - 1 - last_featured_idx
+            else:
+                pulls_since_featured = len(sorted_records)
+            up_hard_pity_remaining = max(0, self.config.up_hard_pity - pulls_since_featured)
 
         # 十连保底进度
         multi_pity_progress = 0
