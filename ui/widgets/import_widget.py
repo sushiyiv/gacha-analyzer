@@ -206,6 +206,23 @@ class ImportWidget(QWidget):
         self.cancel_btn.clicked.connect(self._cancel_fetch)
         status_layout.addWidget(self.cancel_btn)
 
+        # 导出URL按钮（初始隐藏，获取完成后显示）
+        self.copy_url_btn = QPushButton("复制URL")
+        self.copy_url_btn.setFixedSize(80, 28)
+        self.copy_url_btn.setVisible(False)
+        self.copy_url_btn.setStyleSheet("background-color: #1976D2; color: white; border: none; border-radius: 4px;")
+        self.copy_url_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_url_btn.clicked.connect(self._copy_urls)
+        status_layout.addWidget(self.copy_url_btn)
+
+        self.export_url_btn = QPushButton("导出URL")
+        self.export_url_btn.setFixedSize(80, 28)
+        self.export_url_btn.setVisible(False)
+        self.export_url_btn.setStyleSheet("background-color: #1976D2; color: white; border: none; border-radius: 4px;")
+        self.export_url_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_url_btn.clicked.connect(self._export_urls)
+        status_layout.addWidget(self.export_url_btn)
+
         layout.addLayout(status_layout)
 
         # 日志输出
@@ -295,6 +312,9 @@ class ImportWidget(QWidget):
 
         self._log(f"\n共检测到 {len(detected_games)} 个游戏，开始获取记录...")
 
+        # 保存检测到的URL供导出使用
+        self._detected_urls = detected_games
+
         # 依次获取每个游戏的记录
         self._detected_games = detected_games
         self._current_fetch_index = 0
@@ -305,6 +325,12 @@ class ImportWidget(QWidget):
         if self._current_fetch_index >= len(self._detected_games):
             self._set_fetching(False)
             self._log("\n所有游戏获取完成！")
+            # 显示检测到的URL
+            if hasattr(self, '_detected_urls') and self._detected_urls:
+                self._log("\n=== 检测到的URL ===")
+                for game_id, url in self._detected_urls:
+                    self._log(f"  [{GAME_NAMES.get(game_id, game_id)}] {url}")
+                self._log("====================")
             self.main_window.refresh_all()
             QMessageBox.information(self, "完成", "所有游戏记录获取完成！")
             return
@@ -554,6 +580,9 @@ class ImportWidget(QWidget):
         self._set_fetching(True)
         self._log(f"开始从URL获取 {GAME_NAMES.get(game, game)} 抽卡记录...")
 
+        # 保存URL供导出使用
+        self._detected_urls = [(game, url)]
+
         # 获取最新记录时间，用于增量获取
         latest_time = None
         records = self.db.get_records(account.id)
@@ -717,11 +746,56 @@ class ImportWidget(QWidget):
         self.cancel_btn.setVisible(fetching)
         self.cancel_btn.setEnabled(fetching)
         self.cancel_btn.setText("取消获取")
+        # 获取完成后显示导出URL按钮
+        has_urls = hasattr(self, '_detected_urls') and self._detected_urls
+        self.copy_url_btn.setVisible(not fetching and has_urls)
+        self.export_url_btn.setVisible(not fetching and has_urls)
         if fetching:
             self.progress_bar.setRange(0, 0)  # 不确定进度
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
+
+    def _get_urls_text(self) -> str:
+        """获取所有检测到的URL文本"""
+        if not hasattr(self, '_detected_urls') or not self._detected_urls:
+            return ""
+        lines = []
+        for game_id, url in self._detected_urls:
+            lines.append(f"[{GAME_NAMES.get(game_id, game_id)}] {url}")
+        return "\n".join(lines)
+
+    def _copy_urls(self):
+        """复制所有检测到的URL到剪贴板"""
+        text = self._get_urls_text()
+        if not text:
+            QMessageBox.information(self, "提示", "没有可复制的URL")
+            return
+        from PySide6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self._log("✓ URL已复制到剪贴板")
+        QMessageBox.information(self, "复制成功", "URL已复制到剪贴板！")
+
+    def _export_urls(self):
+        """导出所有检测到的URL到文件"""
+        text = self._get_urls_text()
+        if not text:
+            QMessageBox.information(self, "提示", "没有可导出的URL")
+            return
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "导出URL", "gacha_urls.txt", "文本文件 (*.txt)"
+        )
+        if not filepath:
+            return
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(text)
+            self._log(f"✓ URL已导出到: {filepath}")
+            QMessageBox.information(self, "导出成功", f"URL已导出到:\n{filepath}")
+        except Exception as e:
+            self._log(f"✗ 导出失败: {str(e)}")
+            QMessageBox.critical(self, "导出失败", f"导出失败:\n{str(e)}")
 
     def _update_login_btn_visibility(self):
         """根据选择的游戏更新登录按钮的显示状态"""
