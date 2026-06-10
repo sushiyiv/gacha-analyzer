@@ -1,6 +1,11 @@
-﻿"""鸣潮抽卡记录获取器"""
+# -*- coding: utf-8 -*-
+"""鸣潮抽卡记录获取器"""
 
+import json
+import os
+import subprocess
 import requests
+from pathlib import Path
 from urllib.parse import parse_qs
 from typing import List
 from fetchers.base import BaseFetcher, FetcherError
@@ -8,53 +13,33 @@ from fetchers.cache_reader import CacheReader
 from fetchers.url_parser import URLParser
 from core.models import GachaRecord
 
-# cardPoolType (API参数) -> pool_name 映射
-CARD_POOL_TYPE_MAP = {
-    1: "character",           # 角色活动唤取
-    2: "weapon",              # 武器活动唤取
-    3: "standard_character",  # 角色常驻唤取
-    4: "standard_weapon",     # 武器常驻唤取
-    5: "beginner",            # 新手唤取
-    8: "selector",            # 角色新旅唤取
-    9: "selector_weapon",     # 武器新旅唤取
-}
-
-# API返回的中文卡池名 -> pool_name 映射（备用）
-POOL_NAME_MAP = {
-    "角色精准调谐": "character",
-    "角色活动唤取": "character",
-    "武器精准调谐": "weapon",
-    "武器活动唤取": "weapon",
-    "角色常驻唤取": "standard_character",
-    "武器常驻唤取": "standard_weapon",
-    "新手唤取": "beginner",
-    "新手自选唤取": "beginner",
-    "角色新旅唤取": "selector",
-    "武器新旅唤取": "selector_weapon",
-}
-
-# 鸣潮常驻5星角色（非限定）
-STANDARD_5STAR_CHARACTERS = {
-    "维里奈", "安可", "鉴心", "卡卡罗", "凌阳",
-}
-
-# 鸣潮常驻5星武器（非限定，共10把）
-STANDARD_5STAR_WEAPONS = {
-    # 开服5把
-    "浩境粼光", "千古洑流", "停驻之烟", "擎渊怒涛", "漪澜浮录",
-    # 3.0版本新增5把
-    "源能机锋", "镭射切变", "相位涟漪", "脉冲协臂", "玻色星仪",
-}
-
-
 import logging
 
 logger = logging.getLogger(__name__)
 
+CARD_POOL_TYPE_MAP = {
+    1: "character", 2: "weapon", 3: "standard_character",
+    4: "standard_weapon", 5: "beginner", 8: "selector", 9: "selector_weapon", 10: "collab",
+}
+
+POOL_NAME_MAP = {
+    "角色精准调谐": "character", "角色活动唤取": "character",
+    "武器精准调谐": "weapon", "武器活动唤取": "weapon",
+    "角色常驻唤取": "standard_character", "武器常驻唤取": "standard_weapon",
+    "新手唤取": "beginner", "新手自选唤取": "beginner",
+    "角色新旅唤取": "selector", "武器新旅唤取": "selector_weapon",
+    "角色联动唤取": "collab", "武器联动唤取": "collab_weapon",
+    "联动角色唤取": "collab", "联动武器唤取": "collab_weapon",
+}
+
+STANDARD_5STAR_CHARACTERS = {"维里奈", "安可", "鉴心", "卡卡罗", "凌阳"}
+STANDARD_5STAR_WEAPONS = {
+    "浩境粼光", "千古洑流", "停驻之烟", "擎渊怒涛", "漪澜浮录",
+    "源能机锋", "镭射切变", "相位涟漪", "脉冲协臂", "玻色星仪",
+}
+
 
 class WutheringWavesFetcher(BaseFetcher):
-    """鸣潮抽卡记录获取器"""
-
     API_URL = "https://gmserver-api.aki-game2.com/gacha/record/query"
 
     def __init__(self):
@@ -62,135 +47,185 @@ class WutheringWavesFetcher(BaseFetcher):
         self.cache = CacheReader()
         self._detected_uid = ""
 
-    def get_game_name(self) -> str:
+    def get_game_name(self):
         return "鸣潮"
 
-    def get_supported_pools(self) -> List[str]:
+    def get_supported_pools(self):
         return ["character", "weapon", "selector", "selector_weapon",
-                "standard_character", "standard_weapon", "beginner"]
+                "standard_character", "standard_weapon", "beginner", "collab"]
 
-    def _parse_webview_url(self, url: str) -> dict:
-        """从鸣潮网页URL中提取参数"""
-        # URL格式: https://...#/record?svr_id=xxx&player_id=xxx&...
-        if '#' in url:
-            hash_part = url.split('#', 1)[1]
-            if '?' in hash_part:
-                query = hash_part.split('?', 1)[1]
-                params = parse_qs(query)
-                return {k: v[0] for k, v in params.items()}
-        if '?' in url:
-            params = parse_qs(url.split('?', 1)[1])
-            return {k: v[0] for k, v in params.items()}
+    def _find_wave_tools_helper(self):
+        p = Path.home() / "Documents/JSG-LLC/WaveTools/Depends/WaveToolsHelper/WaveToolsHelper.exe"
+        return str(p) if p.exists() else ""
+
+    def _find_game_exe(self):
+        try:
+            import winreg
+            for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+                for subkey in [r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                               r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"]:
+                    try:
+                        key = winreg.OpenKey(hive, subkey)
+                        i = 0
+                        while True:
+                            try:
+                                sk = winreg.EnumKey(key, i)
+                                sp = winreg.OpenKey(key, sk)
+                                try:
+                                    name = winreg.QueryValueEx(sp, "DisplayName")[0]
+                                    if "鸣潮" in name or "Wuthering" in name:
+                                        loc = winreg.QueryValueEx(sp, "InstallLocation")[0]
+                                        exe = os.path.join(loc, "Wuthering Waves Game", "Wuthering Waves.exe")
+                                        if os.path.exists(exe):
+                                            return exe
+                                except FileNotFoundError:
+                                    pass
+                                winreg.CloseKey(sp)
+                                i += 1
+                            except OSError:
+                                break
+                        winreg.CloseKey(key)
+                    except FileNotFoundError:
+                        pass
+        except Exception:
+            pass
+        for p in ["E:/Program File/Wuthering Waves/Wuthering Waves Game/Wuthering Waves.exe",
+                   "D:/Program Files/Wuthering Waves/Wuthering Waves Game/Wuthering Waves.exe",
+                   "C:/Program Files/Wuthering Waves/Wuthering Waves Game/Wuthering Waves.exe"]:
+            if os.path.exists(p):
+                return p
+        return ""
+
+    def _find_client_log(self):
+        exe = self._find_game_exe()
+        if exe:
+            d = os.path.dirname(exe)
+            log = os.path.join(d, "Client", "Saved", "Logs", "Client.log")
+            if os.path.exists(log):
+                return log
+        for p in ["E:/Program File/Wuthering Waves/Wuthering Waves Game/Client/Saved/Logs/Client.log",
+                   "D:/Program Files/Wuthering Waves/Wuthering Waves Game/Client/Saved/Logs/Client.log"]:
+            if os.path.exists(p):
+                return p
+        return ""
+
+    def _get_url_from_wave_tools_helper(self):
+        helper = self._find_wave_tools_helper()
+        if not helper:
+            return ""
+        log = self._find_client_log()
+        if not log:
+            return ""
+        try:
+            self._report_progress("解密游戏日志...", 0.05)
+            import clr
+            import System
+            from System.Reflection import BindingFlags
+            clr.AddReference(helper)
+            asm = System.Reflection.Assembly.LoadFrom(helper)
+            pt = asm.GetType("WaveToolsHelper.Program")
+            with open(log, "rb") as f:
+                data = f.read()
+            barr = System.Array[System.Byte](data)
+            methods = pt.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+            dm = None
+            for m in methods:
+                if "DecodeObfuscatedGachaUrls" in m.Name and "GetGachaURL" in m.Name:
+                    dm = m
+                    break
+            if not dm:
+                return ""
+            result = dm.Invoke(None, System.Array[System.Object]([barr]))
+            for item in result:
+                url = item[1] if hasattr(item, "__getitem__") else str(item)
+                if url and "aki-game" in url:
+                    return str(url)
+        except ImportError:
+            return self._get_url_via_subprocess(helper)
+        except Exception as e:
+            logger.warning("解密失败: %s", str(e))
+            return self._get_url_via_subprocess(helper)
+        return ""
+
+    def _get_url_via_subprocess(self, helper):
+        exe = self._find_game_exe()
+        if not exe:
+            return ""
+        try:
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            r = subprocess.run([helper, "/GetGachaURL", exe], capture_output=True, text=True, timeout=30, creationflags=flags)
+            out = r.stdout.strip()
+            if out:
+                urls = json.loads(out)
+                if isinstance(urls, list) and urls:
+                    return urls[0].get("gachaLink", "")
+        except Exception:
+            pass
+        return ""
+
+    def _parse_webview_url(self, url):
+        if "#" in url:
+            h = url.split("#", 1)[1]
+            if "?" in h:
+                q = h.split("?", 1)[1]
+                return {k: v[0] for k, v in parse_qs(q).items()}
+        if "?" in url:
+            return {k: v[0] for k, v in parse_qs(url.split("?", 1)[1]).items()}
         return {}
 
-    def fetch_records(self, url: str = None, account_id: int = None,
-                      latest_time: str = None) -> List[GachaRecord]:
-        """获取鸣潮抽卡记录"""
+    def fetch_records(self, url=None, account_id=None, latest_time=None):
         if not url:
-            self._report_progress("正在从缓存中提取URL...", 0.1)
-            url = self.cache.extract_url("wutheringwaves")
+            self._report_progress("获取抽卡URL...", 0.05)
+            url = self._get_url_from_wave_tools_helper()
             if not url:
-                raise FetcherError(
-                    "无法自动获取鸣潮URL。\n\n"
-                    "请打开鸣潮，进入唤取记录页面，然后切回本程序重试。\n"
-                    "或者手动粘贴唤取记录页面的URL。"
-                )
-
+                self._report_progress("从日志提取...", 0.1)
+                url = self.cache.extract_url("wutheringwaves")
+        if not url:
+            raise FetcherError("无法获取鸣潮抽卡URL。请确保已安装WaveTools和pythonnet。或手动粘贴URL。")
         url = URLParser.clean_url(url)
         params = self._parse_webview_url(url)
-
         if not params.get("player_id"):
-            raise FetcherError("URL中缺少必要参数，请重新获取")
-
-        self._detected_uid = params.get("player_id", "")
-
-        # 要获取的卡池类型 (cardPoolType: 1-9)
-        pool_types = [1, 2, 3, 4, 5, 8, 9]
+            raise FetcherError("URL中缺少必要参数")
+        self._detected_uid = params["player_id"]
+        pool_types = [1, 2, 3, 4, 5, 8, 9, 10]
         all_records = []
-        total_pools = len(pool_types)
-
-        for pool_idx, card_pool_type in enumerate(pool_types):
+        for idx, pt in enumerate(pool_types):
             if self._cancel_check and self._cancel_check():
                 raise FetcherError("用户取消")
-
-            pool_name = CARD_POOL_TYPE_MAP.get(card_pool_type, "character")
-            self._report_progress(
-                f"正在获取 {pool_name} 记录... ({pool_idx + 1}/{total_pools})",
-                (pool_idx + 0.5) / total_pools
-            )
-
+            pn = CARD_POOL_TYPE_MAP.get(pt, "character")
+            self._report_progress("获取 %s (%d/%d)..." % (pn, idx+1, len(pool_types)), (idx+0.5)/len(pool_types))
             try:
-                # API要求驼峰命名参数
-                resp = requests.post(
-                    self.API_URL,
-                    json={
-                        "playerId": params["player_id"],
-                        "serverId": params.get("svr_id", ""),
-                        "cardPoolId": params.get("resources_id", ""),
-                        "cardPoolType": card_pool_type,
-                        "languageCode": params.get("lang", "zh-Hans"),
-                        "recordId": params.get("record_id", ""),
-                    },
-                    headers={"Content-Type": "application/json"},
-                    timeout=15,
-                )
+                resp = requests.post(self.API_URL, json={
+                    "playerId": params["player_id"], "serverId": params.get("svr_id", ""),
+                    "cardPoolId": params.get("resources_id", ""), "cardPoolType": pt,
+                    "languageCode": params.get("lang", "zh-Hans"), "recordId": params.get("record_id", ""),
+                }, headers={"Content-Type": "application/json"}, timeout=15)
                 data = resp.json()
-            except requests.exceptions.Timeout:
-                raise FetcherError("网络请求超时")
-            except requests.exceptions.ConnectionError:
-                raise FetcherError("网络连接失败")
             except Exception as e:
-                raise FetcherError(f"请求失败: {str(e)}")
-
-            # API成功状态码是 0
-            code = data.get("code")
-            if code != 0:
-                msg = data.get("message", data.get("msg", "未知错误"))
-                # 某些卡池可能已被移除，跳过继续获取
-                logger.warning(f" {pool_name} (type={card_pool_type}) 获取失败: {msg}")
+                raise FetcherError("请求失败: %s" % str(e))
+            if data.get("code") != 0:
+                logger.warning("%s 获取失败: %s" % (pn, data.get("message", "")))
                 continue
-
-            # API直接返回列表
-            records = data.get("data", [])
-            for r in records:
-                r["_pool_type"] = pool_name
-                r["_card_pool_type"] = card_pool_type
-
-            all_records.extend(records)
-
-        # 转换为GachaRecord
+            for r in data.get("data", []):
+                r["_pool_type"] = pn
+                r["_card_pool_type"] = pt
+            all_records.extend(data.get("data", []))
         result = []
         for raw in all_records:
-            pool_type = raw.get("_pool_type", "character")
-            card_pool_name = raw.get("cardPoolType", "")
-            if card_pool_name in POOL_NAME_MAP:
-                pool_type = POOL_NAME_MAP[card_pool_name]
-
-            # 判断是否为UP/限定
+            pt_name = raw.get("_pool_type", "character")
+            cpn = raw.get("cardPoolType", "")
+            if cpn in POOL_NAME_MAP:
+                pt_name = POOL_NAME_MAP[cpn]
             rarity = int(raw.get("qualityLevel", 3))
-            item_name = raw.get("name", "")
-            is_permanent_pool = "常驻" in card_pool_name or "新手" in card_pool_name
-            is_standard_item = (item_name in STANDARD_5STAR_CHARACTERS or
-                                item_name in STANDARD_5STAR_WEAPONS)
-            # UP = 限时池 + 5星 + 不是常驻角色/武器
-            is_featured = (not is_permanent_pool) and rarity >= 5 and (not is_standard_item)
-
-            # 用 resourceId + time + cardPoolType 组合作为唯一标识
-            unique_id = f"{raw.get('resourceId', '')}_{raw.get('time', '')}_{raw.get('_card_pool_type', '')}"
-
-            record = GachaRecord(
-                account_id=account_id or 0,
-                game="wutheringwaves",
-                pool_type=pool_type,
-                item_id=unique_id,
-                item_name=raw.get("name", "未知"),
-                item_type=raw.get("resourceType", ""),
-                rarity=rarity,
-                is_featured=is_featured,
-                count=int(raw.get("count", 1)),
-                time=raw.get("time", ""),
-            )
-            result.append(record)
-
-        self._report_progress(f"获取完成，共 {len(result)} 条记录", 1.0)
+            name = raw.get("name", "")
+            is_perm = "常驻" in cpn or "新手" in cpn
+            is_std = name in STANDARD_5STAR_CHARACTERS or name in STANDARD_5STAR_WEAPONS
+            is_up = (not is_perm) and rarity >= 5 and (not is_std)
+            uid = "%s_%s_%s" % (raw.get("resourceId", ""), raw.get("time", ""), raw.get("_card_pool_type", ""))
+            result.append(GachaRecord(
+                account_id=account_id or 0, game="wutheringwaves", pool_type=pt_name,
+                item_id=uid, item_name=name, item_type=raw.get("resourceType", ""),
+                rarity=rarity, is_featured=is_up, count=int(raw.get("count", 1)), time=raw.get("time", ""),
+            ))
+        self._report_progress("完成: %d 条记录" % len(result), 1.0)
         return result

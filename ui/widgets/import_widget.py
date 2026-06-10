@@ -283,14 +283,27 @@ class ImportWidget(QWidget):
         cache = CacheReader()
         detected_games = []
 
-        # 只扫描选中的游戏
+        # 扫描选中的游戏
         for game_id in selected:
             try:
                 url = cache.extract_url(game_id)
                 if url:
                     detected_games.append((game_id, url))
+                elif game_id == "wutheringwaves":
+                    # 鸣潮: 日志是二进制格式，尝试通过 pythonnet 解密
+                    try:
+                        from fetchers.kuro.wutheringwaves import WutheringWavesFetcher
+                        helper = WutheringWavesFetcher()
+                        helper._report_progress = lambda msg, p: self._log(f"  {msg}")
+                        helper._cancel_check = lambda: False
+                        url = helper._get_url_from_wave_tools_helper()
+                        if url:
+                            detected_games.append((game_id, url))
+                            self._log(f"  通过 WaveToolsHelper 获取到鸣潮抽卡URL")
+                    except Exception as e:
+                        self._log(f"  鸣潮 WaveToolsHelper 解密失败: {str(e)}")
             except Exception as e:
-                self._log(f"  ✗ 扫描 {GAME_NAMES.get(game_id, game_id)} 失败: {str(e)}")
+                self._log(f"  扫描 {GAME_NAMES.get(game_id, game_id)} 失败: {str(e)}")
 
         if not detected_games:
             self._log("\n未找到任何游戏记录！")
