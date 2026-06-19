@@ -1,10 +1,14 @@
 """抽卡分析引擎 - 保底分析、统计分析、运势评分"""
 
-import math
 from collections import Counter, defaultdict
-from datetime import datetime
 from typing import List, Dict, Optional
-from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, Rarity, get_max_rarity, get_mechanic_type
+from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, get_max_rarity, get_mechanic_type
+
+# 概率阈值表：展示这些抽数内的出货概率
+PROBABILITY_THRESHOLDS = [10, 20, 30, 50, 70, 80, 90, 100, 120, 150]
+
+# 默认最高星级（当 game 未指定时）
+DEFAULT_MAX_RARITY = 5
 
 
 def get_rate_at_pull(config: BannerConfig, pull_number: int) -> float:
@@ -84,29 +88,22 @@ class PityAnalyzer:
         # 按时间排序
         sorted_records = sorted(records, key=lambda r: (r.time, r.id))
 
-        # 计算当前保底进度
+        # 单次遍历：收集最高星记录、保底间隔、最后出现位置
+        five_stars = []
+        pity_counts = []
         last_5star_idx = -1
         for i, r in enumerate(sorted_records):
             if r.rarity == max_rarity:
+                pity_counts.append(i - last_5star_idx)
                 last_5star_idx = i
+                five_stars.append(r)
+
         current_pity = len(sorted_records) - 1 - last_5star_idx if last_5star_idx >= 0 else len(sorted_records)
 
-        # 判断是否大保底
+        # 判断是否大保底（最后一个最高星是否歪了）
         is_guaranteed = False
-        if self.config.has_guarantee:
-            for r in reversed(sorted_records):
-                if r.rarity == max_rarity:
-                    is_guaranteed = not r.is_featured
-                    break
-
-        # 最高星记录
-        five_stars = [r for r in sorted_records if r.rarity == max_rarity]
-        pity_counts = []
-        last_idx = -1
-        for i, r in enumerate(sorted_records):
-            if r.rarity == max_rarity:
-                pity_counts.append(i - last_idx)
-                last_idx = i
+        if self.config.has_guarantee and five_stars:
+            is_guaranteed = not five_stars[-1].is_featured
 
         # 50/50 统计
         featured_wins = sum(1 for r in five_stars if r.is_featured)
@@ -118,7 +115,7 @@ class PityAnalyzer:
 
         # 各抽数阈值概率
         prob_table = {}
-        for t in [10, 20, 30, 50, 70, 80, 90, 100, 120, 150]:
+        for t in PROBABILITY_THRESHOLDS:
             if t <= self.config.hard_pity or (self.config.up_hard_pity and t <= self.config.up_hard_pity):
                 prob_table[t] = get_pull_probability(self.config, current_pity, t)
 
@@ -184,7 +181,7 @@ class PityAnalyzer:
             curve.append({"pull": i, "pulls_from_now": i - current_pity, "rate": rate})
         return curve
 
-    def _empty_result(self):
+    def _empty_result(self) -> Dict:
         return {
             "config": self.config,
             "current_pity": 0, "is_guaranteed": False,
@@ -217,7 +214,7 @@ class StatsAnalyzer:
         if not self.records:
             return {"total": 0}
 
-        max_rarity = get_max_rarity(self.game) if self.game else 5
+        max_rarity = get_max_rarity(self.game) if self.game else DEFAULT_MAX_RARITY
         rarity_count = Counter(r.rarity for r in self.records)
         total = len(self.records)
 
@@ -258,14 +255,14 @@ class StatsAnalyzer:
 
     def get_luck_rating(self) -> Dict:
         """运势评分"""
-        max_rarity = get_max_rarity(self.game) if self.game else 5
+        max_rarity = get_max_rarity(self.game) if self.game else DEFAULT_MAX_RARITY
         distribution = self.get_pull_distribution(max_rarity)
         if not distribution:
             return {"rating": "无数据", "score": 0, "description": "暂无5星记录"}
 
         avg = sum(distribution) / len(distribution)
         config = BANNER_CONFIGS.get((self.records[0].game, "character"))
-        theoretical_avg = 62.5 if not config else 1 / config.base_rate_5star
+        theoretical_avg = 1 / config.base_rate_5star if config else 1 / 0.006
 
         if avg <= theoretical_avg * 0.6:
             rating, desc = "SSR 欧皇", "你的运气简直逆天！"
@@ -296,7 +293,7 @@ class StatsAnalyzer:
 
     def get_featured_stats(self) -> Dict:
         """50/50 统计"""
-        max_rarity = get_max_rarity(self.game) if self.game else 5
+        max_rarity = get_max_rarity(self.game) if self.game else DEFAULT_MAX_RARITY
         five_stars = [r for r in self.records if r.rarity == max_rarity]
         if not five_stars:
             return {"total": 0, "wins": 0, "losses": 0, "win_rate": 0}

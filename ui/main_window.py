@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         nav_layout.setSpacing(0)
 
         game_frame = QFrame()
+        game_frame.setStyleSheet("background-color: #ffffff;")
         game_layout = QVBoxLayout(game_frame)
         game_layout.setContentsMargins(12, 8, 12, 8)
         game_layout.setSpacing(2)
@@ -102,8 +103,10 @@ class MainWindow(QMainWindow):
         self._game_scroll.setWidgetResizable(True)
         self._game_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._game_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._game_scroll.setStyleSheet("QScrollArea { background-color: #ffffff; border: none; }")
 
         scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #ffffff;")
         self._game_layout = QVBoxLayout(scroll_content)
         self._game_layout.setContentsMargins(0, 0, 0, 0)
         self._game_layout.setSpacing(2)

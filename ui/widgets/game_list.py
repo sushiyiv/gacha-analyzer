@@ -16,12 +16,12 @@ class CheckListDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         selected = index.data(Qt.ItemDataRole.UserRole + 1)
-        rect = QRectF(option.rect)
+        rect = QRectF(option.rect).adjusted(4, 3, -4, -3)
 
-        # 整行背景
-        painter.setPen(Qt.PenStyle.NoPen)
+        # 整行背景 + 圆角边框
+        painter.setPen(QPen(QColor("#dadce0"), 1.5))
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRect(rect)
+        painter.drawRoundedRect(rect, 10, 10)
 
         # 复选框（垂直居中）
         box_size = self._BOX

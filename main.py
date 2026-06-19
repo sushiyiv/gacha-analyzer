@@ -50,6 +50,31 @@ def main():
     )
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")  # 固定为 Fusion 风格，不随系统主题变化
+
+    # 全局滚动条样式
+    app.setStyleSheet("""
+        QScrollBar:vertical {
+            border: none; background: #2c2c2c; width: 10px; margin: 4px 2px;
+        }
+        QScrollBar::handle:vertical {
+            background: #e0e0e0; border-radius: 5px; min-height: 40px;
+        }
+        QScrollBar::handle:vertical:hover { background: #ffffff; }
+        QScrollBar::handle:vertical:pressed { background: #ffffff; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+        QScrollBar:horizontal {
+            border: none; background: #2c2c2c; height: 10px; margin: 2px 4px;
+        }
+        QScrollBar::handle:horizontal {
+            background: #e0e0e0; border-radius: 5px; min-width: 40px;
+        }
+        QScrollBar::handle:horizontal:hover { background: #ffffff; }
+        QScrollBar::handle:horizontal:pressed { background: #ffffff; }
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
+    """)
 
     icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
     if os.path.exists(icon_path):

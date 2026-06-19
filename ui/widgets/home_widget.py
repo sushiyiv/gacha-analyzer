@@ -97,8 +97,9 @@ class HomeWidget(QWidget):
         self.pool_tabs.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #e0e0e0; border-radius: 8px; background: white; }
             QTabBar::tab { padding: 8px 16px; margin-right: 2px; border: 1px solid #e0e0e0;
-                          border-bottom: none; border-radius: 8px 8px 0 0; background: #f5f5f5; }
-            QTabBar::tab:selected { background: white; font-weight: bold; }
+                          border-bottom: none; border-radius: 8px 8px 0 0; background: #f5f5f5;
+                          color: #333333; }
+            QTabBar::tab:selected { background: white; font-weight: bold; color: #1a73e8; }
         """)
 
         # 统计项模板
@@ -281,7 +282,7 @@ class HomeWidget(QWidget):
             val.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold;")
             val.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl = QLabel(label)
-            lbl.setStyleSheet("color: #888; font-size: 11px;")
+            lbl.setStyleSheet("color: #666666; font-size: 11px;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             fl.addWidget(val)
             fl.addWidget(lbl)
@@ -353,18 +354,28 @@ class HomeWidget(QWidget):
 
         star_colors = {3: "#888", 4: "#9B59B6", 5: "#FFD700", 6: "#FF6B35"}
         for i, r in enumerate(filtered):
-            table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
-            table.setItem(i, 1, QTableWidgetItem(r.item_name))
+            idx_item = QTableWidgetItem(str(i + 1))
+            idx_item.setForeground(QColor("#333333"))
+            table.setItem(i, 0, idx_item)
+
+            name_item = QTableWidgetItem(r.item_name)
+            name_item.setForeground(QColor("#333333"))
+            table.setItem(i, 1, name_item)
+
             si = QTableWidgetItem("★" * r.rarity)
             si.setForeground(QColor(star_colors.get(r.rarity, "#FF6B35")))
             table.setItem(i, 2, si)
             if game == "arknights":
-                table.setItem(i, 3, QTableWidgetItem(r.time[:16] if r.time else ""))
+                time_item = QTableWidgetItem(r.time[:16] if r.time else "")
+                time_item.setForeground(QColor("#333333"))
+                table.setItem(i, 3, time_item)
             else:
                 ui = QTableWidgetItem("是" if r.is_featured else "否")
                 ui.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
                 table.setItem(i, 3, ui)
-                table.setItem(i, 4, QTableWidgetItem(r.time[:16] if r.time else ""))
+                time_item = QTableWidgetItem(r.time[:16] if r.time else "")
+                time_item.setForeground(QColor("#333333"))
+                table.setItem(i, 4, time_item)
 
         card_layout.addWidget(table)
 
@@ -381,10 +392,12 @@ class HomeWidget(QWidget):
         title_layout = QHBoxLayout()
         title_label = QLabel(pool_name)
         title_label.setFont(QFont("Microsoft YaHei", 12, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: #333333;")
         title_layout.addWidget(title_label)
 
         pity_text = QLabel("0/90")
         pity_text.setFont(QFont("Microsoft YaHei", 11))
+        pity_text.setStyleSheet("color: #333333;")
         title_layout.addWidget(pity_text)
 
         title_layout.addStretch()

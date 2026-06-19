@@ -46,8 +46,9 @@ class Database:
         conn = self._ensure_conn()
         try:
             yield conn
-        finally:
-            pass
+        except Exception:
+            conn.rollback()
+            raise
 
     def _init_db(self):
         with self.connect() as conn:
@@ -276,158 +277,76 @@ class Database:
             ).fetchone()
             return row["max_time"] if row else None
 
+    def _query_pity_after_last_5star(self, conn, account_id: int,
+                                      pool_filter: str, pool_params: list,
+                                      max_rarity: int) -> int:
+        """查询距离上次最高星的抽数（共用的SQL逻辑）"""
+        row = conn.execute(
+            f"""SELECT time, id FROM gacha_records
+               WHERE account_id=? AND {pool_filter} AND rarity>=?
+               ORDER BY time DESC, id DESC LIMIT 1""",
+            [account_id] + pool_params + [max_rarity]
+        ).fetchone()
+
+        if row is None:
+            total = conn.execute(
+                f"SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND {pool_filter}",
+                [account_id] + pool_params
+            ).fetchone()
+            return total["cnt"] if total else 0
+
+        count = conn.execute(
+            f"""SELECT COUNT(*) as cnt FROM gacha_records
+               WHERE account_id=? AND {pool_filter} AND (time > ? OR (time = ? AND id > ?))""",
+            [account_id] + pool_params + [row["time"], row["time"], row["id"]]
+        ).fetchone()
+        return count["cnt"] if count else 0
+
     def get_last_5star_pity(self, account_id: int, pool_type: str, game: str = "", pool_name: str = "") -> int:
         """获取当前保底进度（距离上次最高星的抽数）"""
         from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_GROUP, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
         max_rarity = get_max_rarity(game) if game else 5
-        conn = self._ensure_conn()
 
-        # 终末地：武器池按 pool_name 过滤（换名字清空保底），其他池按分组查询
-        if game == "endfield":
-            pity_group = get_endfield_pity_group(pool_type)
-            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                # 武器池：按 pool_type + pool_name 查询
-                pool_type_filter = "pool_type=? AND pool_name=?"
-                pool_type_params = [pool_type, pool_name] if pool_name else [pool_type, ""]
-            else:
-                # 其他池：按保底分组查询（跨卡池轮换继承）
-                pool_types = [pt for pt, g in ENDFIELD_PITY_GROUP.items() if g == pity_group]
-                placeholders = ",".join("?" * len(pool_types))
-                pool_type_filter = f"pool_type IN ({placeholders})"
-                pool_type_params = pool_types
-        else:
-            pool_type_filter = "pool_type=?"
-            pool_type_params = [pool_type]
-
-        # 当未指定 pool_name 时，找到该保底组下最近活跃的 pool_name
-        if not pool_name:
-            latest = conn.execute(
-                f"""SELECT pool_name FROM gacha_records
-                   WHERE account_id=? AND {pool_type_filter}
-                   ORDER BY time DESC, id DESC LIMIT 1""",
-                [account_id] + pool_type_params
-            ).fetchone()
-            if not latest:
-                return 0
-            pool_name = latest["pool_name"]
-
-        # 终末地：武器池按 pool_name 过滤，其他池不按 pool_name 过滤（跨轮换继承）
-        # 其他游戏：按 pool_name 过滤
-        if game == "endfield":
-            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                # 武器池：按 pool_name 过滤
-                row = conn.execute(
-                    f"""SELECT time, id FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND rarity>=?
-                       ORDER BY time DESC, id DESC LIMIT 1""",
-                    [account_id] + pool_type_params + [max_rarity]
-                ).fetchone()
-
-                if row is None:
-                    total = conn.execute(
-                        f"SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND {pool_type_filter}",
-                        [account_id] + pool_type_params
-                    ).fetchone()
-                    return total["cnt"] if total else 0
-
-                count = conn.execute(
-                    f"""SELECT COUNT(*) as cnt FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND (time > ? OR (time = ? AND id > ?))""",
-                    [account_id] + pool_type_params + [row["time"], row["time"], row["id"]]
-                ).fetchone()
-                return count["cnt"] if count else 0
-            else:
-                # 其他池：不按 pool_name 过滤
-                row = conn.execute(
-                    f"""SELECT time, id FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND rarity>=?
-                       ORDER BY time DESC, id DESC LIMIT 1""",
-                    [account_id] + pool_type_params + [max_rarity]
-                ).fetchone()
-
-                if row is None:
-                    total = conn.execute(
-                        f"SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND {pool_type_filter}",
-                        [account_id] + pool_type_params
-                    ).fetchone()
-                    return total["cnt"] if total else 0
-
-                count = conn.execute(
-                    f"""SELECT COUNT(*) as cnt FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND (time > ? OR (time = ? AND id > ?))""",
-                    [account_id] + pool_type_params + [row["time"], row["time"], row["id"]]
-                ).fetchone()
-                return count["cnt"] if count else 0
-        else:
-            row = conn.execute(
-                """SELECT time, id FROM gacha_records
-                   WHERE account_id=? AND pool_type=? AND pool_name=? AND rarity>=?
-                   ORDER BY time DESC, id DESC LIMIT 1""",
-                (account_id, pool_type, pool_name, max_rarity)
-            ).fetchone()
-
-            if row is None:
-                total = conn.execute(
-                    "SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND pool_type=? AND pool_name=?",
-                    (account_id, pool_type, pool_name)
-                ).fetchone()
-                return total["cnt"] if total else 0
-
-            count = conn.execute(
-                """SELECT COUNT(*) as cnt FROM gacha_records
-                   WHERE account_id=? AND pool_type=? AND pool_name=? AND (time > ? OR (time = ? AND id > ?))""",
-                (account_id, pool_type, pool_name, row["time"], row["time"], row["id"])
-            ).fetchone()
-            return count["cnt"] if count else 0
-
-    def calculate_pity_counts(self, account_id: int):
-        """Recalculate pity counts for all records of a specific account."""
-        from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
         with self.connect() as conn:
-            rows = conn.execute(
-                "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records "
-                "WHERE account_id=? ORDER BY pool_type, time ASC, id ASC",
-                (account_id,)
-            ).fetchall()
-
-            pity_counts = {}
-            for row in rows:
-                record_id = row["id"]
-                game = row["game"]
-                pool_type = row["pool_type"]
-                pool_name = row["pool_name"] if "pool_name" in row.keys() else ""
-                rarity = row["rarity"]
-                max_rarity = get_max_rarity(game)
-
-                if game == "endfield":
-                    group = get_endfield_pity_group(pool_type)
-                    # 武器池换名字清空保底，其他池跨轮换继承
-                    if group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                        group_key = (game, group, pool_name)
-                    else:
-                        group_key = (game, group)
+            # 终末地：武器池按 pool_name 过滤（换名字清空保底），其他池按分组查询
+            if game == "endfield":
+                pity_group = get_endfield_pity_group(pool_type)
+                if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
+                    pool_type_filter = "pool_type=? AND pool_name=?"
+                    pool_type_params = [pool_type, pool_name] if pool_name else [pool_type, ""]
                 else:
-                    group_key = (game, pool_type, pool_name) if pool_name else (game, pool_type, "")
+                    pool_types = [pt for pt, g in ENDFIELD_PITY_GROUP.items() if g == pity_group]
+                    placeholders = ",".join("?" * len(pool_types))
+                    pool_type_filter = f"pool_type IN ({placeholders})"
+                    pool_type_params = pool_types
+            else:
+                pool_type_filter = "pool_type=?"
+                pool_type_params = [pool_type]
 
-                if group_key not in pity_counts:
-                    pity_counts[group_key] = 0
+            # 当未指定 pool_name 时，找到该保底组下最近活跃的 pool_name
+            if not pool_name:
+                latest = conn.execute(
+                    f"""SELECT pool_name FROM gacha_records
+                       WHERE account_id=? AND {pool_type_filter}
+                       ORDER BY time DESC, id DESC LIMIT 1""",
+                    [account_id] + pool_type_params
+                ).fetchone()
+                if not latest:
+                    return 0
+                pool_name = latest["pool_name"]
 
-                pity_counts[group_key] += 1
+            # 非终末地或终末地武器池：额外按 pool_name 过滤
+            if game != "endfield" or pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
+                pool_type_filter += " AND pool_name=?"
+                pool_type_params = pool_type_params + [pool_name]
 
-                if rarity >= max_rarity:
-                    conn.execute(
-                        "UPDATE gacha_records SET pity_count=? WHERE id=?",
-                        (pity_counts[group_key], record_id)
-                    )
-                    pity_counts[group_key] = 0
+            return self._query_pity_after_last_5star(
+                conn, account_id, pool_type_filter, pool_type_params, max_rarity
+            )
 
-            conn.commit()
-
-    def _rebuild_pity_counts(self, conn):
+    def _compute_pity_counts(self, conn, rows):
+        """计算保底计数并更新记录（共用逻辑）"""
         from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
-        rows = conn.execute(
-            "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records ORDER BY account_id, pool_type, time ASC, id ASC"
-        ).fetchall()
 
         pity_counts = {}
         for row in rows:
@@ -459,6 +378,23 @@ class Database:
                 )
                 pity_counts[group_key] = 0
 
+    def calculate_pity_counts(self, account_id: int):
+        """重新计算指定账号所有记录的保底计数"""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records "
+                "WHERE account_id=? ORDER BY pool_type, time ASC, id ASC",
+                (account_id,)
+            ).fetchall()
+            self._compute_pity_counts(conn, rows)
+            conn.commit()
+
+    def _rebuild_pity_counts(self, conn):
+        """重新计算所有账号的保底计数（迁移用）"""
+        rows = conn.execute(
+            "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records ORDER BY account_id, pool_type, time ASC, id ASC"
+        ).fetchall()
+        self._compute_pity_counts(conn, rows)
         conn.commit()
     def get_total_records(self) -> int:
         with self.connect() as conn:

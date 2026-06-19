@@ -22,6 +22,18 @@ class BaseFetcher(ABC):
         self._cancel_check: Optional[Callable] = None
         self._detected_uid: str = ""
 
+    def close(self):
+        """关闭 HTTP 会话，释放连接池"""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     def set_progress_callback(self, callback: Callable):
         """设置进度回调"""
         self._progress_callback = callback
@@ -53,7 +65,7 @@ class BaseFetcher(ABC):
         except requests.exceptions.ConnectionError:
             raise FetcherError("网络连接失败，请检查网络")
         except Exception as e:
-            raise FetcherError(f"请求失败: {str(e)}")
+            raise FetcherError(f"请求失败: {str(e)}") from e
 
     @abstractmethod
     def fetch_records(self, url: str = None, account_id: int = None) -> List[GachaRecord]:

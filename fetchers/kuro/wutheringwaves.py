@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 """鸣潮抽卡记录获取器"""
 
-import json
 import os
-import subprocess
 import requests
-from pathlib import Path
 from urllib.parse import parse_qs
 from typing import List
 from fetchers.base import BaseFetcher, FetcherError
 from fetchers.cache_reader import CacheReader
 from fetchers.url_parser import URLParser
+from fetchers.kuro.log_decoder import extract_gacha_urls_from_log
 from core.models import GachaRecord
 
 import logging
@@ -53,10 +51,6 @@ class WutheringWavesFetcher(BaseFetcher):
     def get_supported_pools(self):
         return ["character", "weapon", "selector", "selector_weapon",
                 "standard_character", "standard_weapon", "beginner", "collab"]
-
-    def _find_wave_tools_helper(self):
-        p = Path.home() / "Documents/JSG-LLC/WaveTools/Depends/WaveToolsHelper/WaveToolsHelper.exe"
-        return str(p) if p.exists() else ""
 
     def _find_game_exe(self):
         try:
@@ -109,58 +103,18 @@ class WutheringWavesFetcher(BaseFetcher):
                 return p
         return ""
 
-    def _get_url_from_wave_tools_helper(self):
-        helper = self._find_wave_tools_helper()
-        if not helper:
-            return ""
+    def _get_url_from_log(self):
+        """从游戏日志中解密获取抽卡URL（纯Python实现）"""
         log = self._find_client_log()
         if not log:
             return ""
         try:
-            self._report_progress("解密游戏日志...", 0.05)
-            import clr
-            import System
-            from System.Reflection import BindingFlags
-            clr.AddReference(helper)
-            asm = System.Reflection.Assembly.LoadFrom(helper)
-            pt = asm.GetType("WaveToolsHelper.Program")
-            with open(log, "rb") as f:
-                data = f.read()
-            barr = System.Array[System.Byte](data)
-            methods = pt.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
-            dm = None
-            for m in methods:
-                if "DecodeObfuscatedGachaUrls" in m.Name and "GetGachaURL" in m.Name:
-                    dm = m
-                    break
-            if not dm:
-                return ""
-            result = dm.Invoke(None, System.Array[System.Object]([barr]))
-            for item in result:
-                url = item[1] if hasattr(item, "__getitem__") else str(item)
-                if url and "aki-game" in url:
-                    return str(url)
-        except ImportError:
-            return self._get_url_via_subprocess(helper)
+            self._report_progress("解密游戏日志...", 0.08)
+            urls = extract_gacha_urls_from_log(log)
+            if urls:
+                return urls[-1]  # 取最新的URL
         except Exception as e:
-            logger.warning("解密失败: %s", str(e))
-            return self._get_url_via_subprocess(helper)
-        return ""
-
-    def _get_url_via_subprocess(self, helper):
-        exe = self._find_game_exe()
-        if not exe:
-            return ""
-        try:
-            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            r = subprocess.run([helper, "/GetGachaURL", exe], capture_output=True, text=True, timeout=30, creationflags=flags)
-            out = r.stdout.strip()
-            if out:
-                urls = json.loads(out)
-                if isinstance(urls, list) and urls:
-                    return urls[0].get("gachaLink", "")
-        except Exception:
-            pass
+            logger.warning("日志解密失败: %s", str(e))
         return ""
 
     def _parse_webview_url(self, url):
@@ -176,12 +130,12 @@ class WutheringWavesFetcher(BaseFetcher):
     def fetch_records(self, url=None, account_id=None, latest_time=None):
         if not url:
             self._report_progress("获取抽卡URL...", 0.05)
-            url = self._get_url_from_wave_tools_helper()
+            url = self._get_url_from_log()
             if not url:
-                self._report_progress("从日志提取...", 0.1)
+                self._report_progress("从缓存提取...", 0.1)
                 url = self.cache.extract_url("wutheringwaves")
         if not url:
-            raise FetcherError("无法获取鸣潮抽卡URL。请确保已安装WaveTools和pythonnet。或手动粘贴URL。")
+            raise FetcherError("无法获取鸣潮抽卡URL。请确保已打开游戏并进入抽卡记录页面。")
         url = URLParser.clean_url(url)
         params = self._parse_webview_url(url)
         if not params.get("player_id"):
@@ -211,6 +165,7 @@ class WutheringWavesFetcher(BaseFetcher):
                 r["_card_pool_type"] = pt
             all_records.extend(data.get("data", []))
         result = []
+        seen_ids = {}
         for raw in all_records:
             pt_name = raw.get("_pool_type", "character")
             cpn = raw.get("cardPoolType", "")
@@ -221,7 +176,13 @@ class WutheringWavesFetcher(BaseFetcher):
             is_perm = "常驻" in cpn or "新手" in cpn
             is_std = name in STANDARD_5STAR_CHARACTERS or name in STANDARD_5STAR_WEAPONS
             is_up = (not is_perm) and rarity >= 5 and (not is_std)
-            uid = "%s_%s_%s" % (raw.get("resourceId", ""), raw.get("time", ""), raw.get("_card_pool_type", ""))
+            base_id = "%s_%s_%s" % (raw.get("resourceId", ""), raw.get("time", ""), raw.get("_card_pool_type", ""))
+            if base_id in seen_ids:
+                seen_ids[base_id] += 1
+                uid = "%s_%d" % (base_id, seen_ids[base_id])
+            else:
+                seen_ids[base_id] = 0
+                uid = base_id
             result.append(GachaRecord(
                 account_id=account_id or 0, game="wutheringwaves", pool_type=pt_name,
                 item_id=uid, item_name=name, item_type=raw.get("resourceType", ""),

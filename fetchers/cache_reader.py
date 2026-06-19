@@ -294,11 +294,12 @@ class CacheReader:
         except Exception:
             return None
 
-        # 鸣潮：从日志的OpenWebView中提取URL
+        # 鸣潮：日志是二进制编码，使用专用解码器
         if game == "wutheringwaves":
-            matches = re.findall(r'"url":"(https://aki-gm-resources\.aki-game\.com/aki/gacha/index\.html#/record\?[^"]+)"', content)
-            if matches:
-                return matches[-1].replace("\\u0026", "&")
+            from fetchers.kuro.log_decoder import extract_gacha_urls_from_log
+            urls = extract_gacha_urls_from_log(filepath)
+            if urls:
+                return urls[-1]
             return None
 
         # 查找包含 getGachaLog 或类似API的URL

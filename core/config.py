@@ -15,7 +15,7 @@ class Config:
         "database_path": "data/gacha_records.db",
         "backup_dir": "data/backups",
         "export_dir": "data/exports",
-        "request_interval": 1.0,
+        "request_interval": 0.3,
         "request_timeout": 15,
         "max_backups": 10,
         "backup_interval_hours": 24,
@@ -34,6 +34,8 @@ class Config:
             self._user_config_path = self._base_dir / "data" / "user_config.yaml"
             self._config = {}
             self._load()
+            # 确保数据目录存在
+            self._ensure_dirs()
 
     def _load(self):
         self._config = dict(self.DEFAULTS)
@@ -47,6 +49,12 @@ class Config:
             with open(self._user_config_path, "r", encoding="utf-8") as f:
                 user_config = yaml.safe_load(f) or {}
                 self._deep_merge(self._config, user_config)
+
+    def _ensure_dirs(self):
+        """初始化时确保数据目录存在"""
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.backup_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.export_dir).mkdir(parents=True, exist_ok=True)
 
     def _deep_merge(self, base, override):
         for key, value in override.items():
@@ -102,19 +110,16 @@ class Config:
     @property
     def db_path(self):
         path = self._base_dir / str(self.get("database_path", self.DEFAULTS["database_path"]))
-        path.parent.mkdir(parents=True, exist_ok=True)
         return str(path)
 
     @property
     def backup_dir(self):
         path = self._base_dir / str(self.get("backup_dir", self.DEFAULTS["backup_dir"]))
-        path.mkdir(parents=True, exist_ok=True)
         return str(path)
 
     @property
     def export_dir(self):
         path = self._base_dir / str(self.get("export_dir", self.DEFAULTS["export_dir"]))
-        path.mkdir(parents=True, exist_ok=True)
         return str(path)
 
     def get_cache_path(self, game, region="cn"):

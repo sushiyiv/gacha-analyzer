@@ -1,60 +1,20 @@
 """数据导入页面"""
 
-import json
 import os
-import csv
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QLineEdit, QTextEdit, QFileDialog, QMessageBox,
     QProgressBar, QGroupBox, QGridLayout, QComboBox, QDialog
 )
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 
 from core.database import Database
 from core.models import Account, GachaRecord, GAME_NAMES
-from fetchers import get_fetcher
-from fetchers.url_parser import URLParser
+from ui.widgets.fetch_worker import FetchThread
+from ui.widgets.file_parser import parse_file
+from ui.widgets.login_handler import LoginHandler
 
-
-class FetchThread(QThread):
-    """后台获取线程"""
-    progress = Signal(str, float)
-    finished = Signal(list)
-    error = Signal(str)
-
-    def __init__(self, game, url=None, account_id=None, latest_time=None):
-        super().__init__()
-        self.game = game
-        self.url = url
-        self.account_id = account_id
-        self.latest_time = latest_time
-        self._cancelled = False
-        self.detected_uid = ""
-
-    def cancel(self):
-        self._cancelled = True
-
-    def is_cancelled(self):
-        return self._cancelled
-
-    def run(self):
-        try:
-            fetcher = get_fetcher(self.game)
-            self._fetcher_instance = fetcher  # 保存引用供取消时使用
-            fetcher.set_progress_callback(lambda msg, p: self.progress.emit(msg, p))
-            fetcher._cancel_check = self.is_cancelled
-            records = fetcher.fetch_records(url=self.url, account_id=self.account_id, latest_time=self.latest_time)
-            self.detected_uid = getattr(fetcher, '_detected_uid', '')
-            if self._cancelled:
-                self.error.emit("用户已取消获取")
-            else:
-                self.finished.emit(records)
-        except Exception as e:
-            if self._cancelled:
-                self.error.emit("用户已取消获取")
-            else:
-                self.error.emit(str(e))
 
 
 class ImportWidget(QWidget):
@@ -65,6 +25,7 @@ class ImportWidget(QWidget):
         self.main_window = main_window
         self.db = Database()
         self.fetch_thread = None
+        self._login_handler = LoginHandler(self, self._log)
         self._init_ui()
 
     def _init_ui(self):
@@ -577,7 +538,7 @@ class ImportWidget(QWidget):
         # 对于明日方舟和终末地，先通过token获取UID
         uid = None
         if game in ["arknights", "endfield"] and not url.startswith("http"):
-            uid = self._get_uid_from_token(game, url)
+            uid = LoginHandler.get_uid_from_token(game, url, self._log)
             if uid:
                 self._log(f"  从Token检测到UID: {uid}")
 
@@ -707,50 +668,6 @@ class ImportWidget(QWidget):
             self.cancel_btn.setText("取消中...")
             self._log("正在取消获取...")
 
-    def _get_uid_from_token(self, game: str, token: str) -> str:
-        """通过token获取UID（仅明日方舟和终末地）"""
-        try:
-            import requests as req
-
-            self._log(f"  正在从Token获取UID... (Token长度: {len(token)})")
-
-            # 短 token（< 50字符）是鹰角账号 token，需要交换
-            if len(token) < 50:
-                self._log(f"  检测到鹰角账号Token，正在交换...")
-                # 1. hg_token -> app_token
-                grant_resp = req.post(
-                    "https://as.hypergryph.com/user/oauth2/v2/grant",
-                    json={"type": 1, "appCode": "be36d44aa36bfb5b", "token": token},
-                    timeout=15,
-                )
-                grant_data = grant_resp.json()
-                app_token = grant_data.get("data", {}).get("token")
-                if not app_token:
-                    self._log(f"  ✗ 获取app_token失败: {grant_data.get('msg', '未知错误')}")
-                    return None
-
-                # 2. app_token -> 绑定列表 -> UID
-                binding_resp = req.get(
-                    "https://binding-api-account-prod.hypergryph.com/account/binding/v1/binding_list",
-                    params={"token": app_token, "appCode": game},
-                    timeout=15,
-                )
-                binding_data = binding_resp.json()
-                apps = binding_data.get("data", {}).get("list", [])
-
-                for app in apps:
-                    if app.get("appCode") == game:
-                        for binding in app.get("bindingList", []):
-                            uid = binding.get("uid", "")
-                            if uid:
-                                self._log(f"  ✓ 获取到UID: {uid}")
-                                return str(uid)
-                self._log(f"  ✗ 未找到{game}的绑定角色")
-            else:
-                self._log(f"  Token是u8_token（长token），无法直接获取UID")
-        except Exception as e:
-            self._log(f"  ✗ 获取UID失败: {str(e)}")
-        return None
 
     def _set_fetching(self, fetching):
         self.auto_fetch_btn.setEnabled(not fetching)
@@ -813,9 +730,7 @@ class ImportWidget(QWidget):
     def _update_login_btn_visibility(self):
         """根据选择的游戏更新登录按钮的显示状态"""
         selected_id = self.auto_game_combo.currentData()
-        # 只有选择终末地、明日方舟或全部游戏时才显示登录按钮
-        show_login = selected_id in ["all", "endfield", "arknights"]
-        self.login_btn.setVisible(show_login)
+        LoginHandler.update_login_btn_visibility(selected_id, self.login_btn)
 
     def _paste_from_clipboard(self):
         from PySide6.QtWidgets import QApplication
@@ -825,53 +740,9 @@ class ImportWidget(QWidget):
     def _login_fetch(self):
         """登录获取 - 根据当前游戏打开对应登录窗口"""
         game = self.main_window.get_current_game()
+        self._login_handler.login_fetch(game, self.url_input)
 
-        if game == "endfield":
-            self._login_endfield()
-        elif game == "arknights":
-            self._login_arknights()
-        else:
-            QMessageBox.information(self, "提示", "登录获取仅支持终末地和明日方舟。")
 
-    def _login_endfield(self):
-        """终末地登录 - API版"""
-        try:
-            from ui.widgets.login_dialog_api import LoginApiDialog
-
-            dialog = LoginApiDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                token = dialog.get_framework_token()
-                if token:
-                    self.url_input.setText(token)
-                    self._log(f"✓ 终末地登录成功，Token: {token[:20]}...")
-                    QTimer.singleShot(100, self._url_fetch)
-                else:
-                    self._log("✗ 未获取到凭证")
-                    QMessageBox.warning(self, "提示", "未获取到凭证")
-            else:
-                self._log("登录已取消")
-        except Exception as e:
-            self._log(f"✗ 登录出错: {type(e).__name__}: {str(e)}")
-
-    def _login_arknights(self):
-        """明日方舟登录 - API版"""
-        try:
-            from ui.widgets.arknights_login_api import ArknightsLoginApiDialog
-
-            dialog = ArknightsLoginApiDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                token = dialog.get_token()
-                if token:
-                    self.url_input.setText(token)
-                    self._log(f"✓ 明日方舟登录成功，Token: {token[:20]}...")
-                    QTimer.singleShot(100, self._url_fetch)
-                else:
-                    self._log("✗ 未获取到 Token")
-                    QMessageBox.warning(self, "提示", "未获取到 Token，请重试。")
-            else:
-                self._log("登录已取消")
-        except Exception as e:
-            self._log(f"✗ 登录出错: {type(e).__name__}: {str(e)}")
 
     def _import_file(self, file_type):
         """文件导入"""
@@ -909,219 +780,9 @@ class ImportWidget(QWidget):
 
     def _parse_file(self, filepath, file_type, game, account_id):
         """解析导入文件"""
-        records = []
+        return parse_file(filepath, file_type, game, account_id)
 
-        if file_type == "json":
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
 
-            # 检测小黑盒格式: {"info": {...}, "data": {"id": {"c": [...], "p": "..."}, ...}}
-            if isinstance(data, dict) and "info" in data and "data" in data and isinstance(data["data"], dict):
-                records = self._parse_xiaoheihe(data, game, account_id)
-            # 检测 UIGF 格式: {"info": {...}, "list": [...]}
-            elif isinstance(data, dict) and "info" in data and "list" in data:
-                records = self._parse_uigf(data, game, account_id)
-            else:
-                # 兼容多种格式
-                if isinstance(data, dict):
-                    if "list" in data:
-                        data = data["list"]
-                    elif "records" in data:
-                        data = data["records"]
-                    else:
-                        data = data.get("list", data.get("records", data.get("data", [])))
-
-                for item in data:
-                    records.append(GachaRecord(
-                        account_id=account_id,
-                        game=item.get("game", game),
-                        pool_type=item.get("pool_type", item.get("gacha_type", "character")),
-                        item_name=item.get("item_name", item.get("name", "未知")),
-                        item_type=item.get("item_type", item.get("type", "")),
-                        rarity=int(item.get("rarity", item.get("rank_type", 3))),
-                        is_featured=bool(item.get("is_featured", item.get("is_up", False))),
-                        time=item.get("time", ""),
-                        pity_count=int(item.get("pity_count", 0)),
-                    ))
-
-        elif file_type == "csv":
-            with open(filepath, "r", encoding="utf-8-sig") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    records.append(GachaRecord(
-                        account_id=account_id,
-                        game=row.get("game", game),
-                        pool_type=row.get("pool_type", "character"),
-                        item_name=row.get("item_name", row.get("name", "未知")),
-                        item_type=row.get("item_type", ""),
-                        rarity=int(row.get("rarity", 3)),
-                        is_featured=row.get("is_featured", "").lower() in ("true", "1", "是"),
-                        time=row.get("time", ""),
-                    ))
-
-        elif file_type == "excel":
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(filepath, read_only=True)
-                ws = wb.active
-                headers = [cell.value for cell in next(ws.iter_rows(max_row=1))]
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    item = dict(zip(headers, row))
-                    records.append(GachaRecord(
-                        account_id=account_id,
-                        game=str(item.get("game", game)),
-                        pool_type=str(item.get("pool_type", "character")),
-                        item_name=str(item.get("item_name", item.get("name", "未知"))),
-                        item_type=str(item.get("item_type", "")),
-                        rarity=int(item.get("rarity", 3)),
-                        is_featured=bool(item.get("is_featured", False)),
-                        time=str(item.get("time", "")),
-                    ))
-            except ImportError:
-                raise RuntimeError("需要安装 openpyxl 才能导入 Excel 文件")
-
-        return records
-
-    def _parse_xiaoheihe(self, data: dict, game: str, account_id: int) -> list:
-        """解析小黑盒导出格式
-
-        格式: {"info": {...}, "data": {"timestamp": {"c": [[name, rarity, is_featured], ...], "p": "卡池名"}, ...}}
-        """
-        from datetime import datetime
-        from core.models import get_max_rarity
-
-        records = []
-        uid = str(data.get("info", {}).get("uid", ""))
-
-        # 小黑盒的星级和API一致（0-5），明日方舟需要+1转成1-6
-        rarity_offset = 1 if game == "arknights" else 0
-
-        for ts_str, entry in data.get("data", {}).items():
-            # 解析时间戳
-            try:
-                ts = int(ts_str)
-                time_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-            except (ValueError, OSError):
-                time_str = ""
-
-            pool_name = entry.get("p", "")
-            chars = entry.get("c", [])
-
-            # 根据游戏确定 pool_type
-            if game == "arknights":
-                pool_type = self._get_arknights_pool_type(pool_name)
-            else:
-                pool_type = "character"
-
-            for idx, char in enumerate(chars):
-                if len(char) < 2:
-                    continue
-                char_name = char[0]
-                rarity = int(char[1]) + rarity_offset
-                is_featured = bool(char[2]) if len(char) > 2 else False
-
-                # 生成唯一 item_id: 角色名_时间（与游戏API获取格式一致，避免重复）
-                item_id = f"{char_name}_{time_str}"
-
-                records.append(GachaRecord(
-                    account_id=account_id,
-                    game=game,
-                    pool_type=pool_type,
-                    pool_name=pool_name,
-                    item_id=item_id,
-                    item_name=char_name,
-                    item_type="CHAR",
-                    rarity=rarity,
-                    is_featured=is_featured,
-                    count=1,
-                    time=time_str,
-                ))
-
-        return records
-
-    def _parse_uigf(self, data: dict, game: str, account_id: int) -> list:
-        """解析 UIGF (Unified Interchangeable GachaLog Format) 标准格式
-
-        格式: {"info": {...}, "list": [{"uid", "gacha_type", "time", "name", "item_type", "rank_type", "id", ...}, ...]}
-        """
-        from fetchers.mihoyo.api import MihoyoAPI
-
-        # UIGF gacha_type 到 pool_type 的映射
-        UIGF_TYPE_MAP = {
-            "genshin": {
-                "100": "beginner",
-                "200": "standard",
-                "301": "character",
-                "302": "weapon",
-                "400": "character",
-                "500": "chronicled",
-            },
-            "starrail": {
-                "1": "standard",
-                "2": "beginner",
-                "11": "character",
-                "12": "weapon",
-                "13": "collab",
-                "14": "collab_weapon",
-            },
-            "zzz": {
-                "1001": "standard",
-                "2001": "character",
-                "3001": "weapon",
-                "4001": "special",
-                "5001": "special_weapon",
-                "6001": "bangboo",
-                # 兼容 API 新短格式
-                "1": "standard",
-                "2": "character",
-                "3": "weapon",
-                "4": "special",
-                "5": "special_weapon",
-                "6": "bangboo",
-            },
-        }
-
-        type_map = UIGF_TYPE_MAP.get(game, {})
-        records = []
-
-        for item in data.get("list", []):
-            gacha_type = str(item.get("gacha_type", item.get("uigf_gacha_type", "")))
-            pool_type = type_map.get(gacha_type, "character")
-
-            # 添加 _pool_type 供 MihoyoAPI.parse_record 使用
-            item["_pool_type"] = pool_type
-            record = MihoyoAPI.parse_record(item, game, account_id)
-            records.append(record)
-
-        return records
-
-    def _get_arknights_pool_type(self, pool_name: str) -> str:
-        """根据明日方舟卡池名返回保底分组"""
-        from core.models import ARKNIGHTS_POOL_MECHANIC_MAP, ARKNIGHTS_MECHANIC_TO_GROUP
-
-        # 精确匹配
-        mechanic = ARKNIGHTS_POOL_MECHANIC_MAP.get(pool_name, "")
-        if mechanic:
-            return ARKNIGHTS_MECHANIC_TO_GROUP.get(mechanic, "standard")
-
-        # 关键词匹配
-        limited_keywords = ["限定", "联动", "跨年", "归航", "启程", "承诺"]
-        kernel_keywords = ["中坚"]
-        standard_keywords = ["标准", "常驻", "定向", "甄选"]
-
-        for kw in limited_keywords:
-            if kw in pool_name:
-                return "limited"
-        for kw in kernel_keywords:
-            if kw in pool_name:
-                return "kernel"
-        for kw in standard_keywords:
-            if kw in pool_name:
-                return "standard"
-
-        # 未识别的限时卡池默认为独立寻访（limited）
-        # 因为大多数特定角色卡池都是限定池
-        return "limited"
 
     def _ensure_account(self, game):
         """确保有账号，没有则创建"""
