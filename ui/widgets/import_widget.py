@@ -15,6 +15,7 @@ from core.database import Database
 from core.models import Account, GachaRecord, GAME_NAMES
 from fetchers import get_fetcher
 from fetchers.url_parser import URLParser
+from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
 class FetchThread(QThread):
@@ -82,7 +83,7 @@ class ImportWidget(QWidget):
 
         # 方式一：自动获取
         auto_group = QGroupBox("方式一：自动获取（推荐）")
-        auto_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        auto_group.setStyleSheet(GROUPBOX_STYLE)
         auto_layout = QVBoxLayout(auto_group)
 
         # 游戏选择 + 按钮 同一行
@@ -103,6 +104,7 @@ class ImportWidget(QWidget):
         select_layout.addWidget(self.auto_game_combo)
 
         self.auto_fetch_btn = QPushButton("开始获取")
+        self.auto_fetch_btn.setObjectName("primary_button")
         self.auto_fetch_btn.setFixedSize(100, 32)
         self.auto_fetch_btn.clicked.connect(self._auto_fetch)
         select_layout.addWidget(self.auto_fetch_btn)
@@ -118,22 +120,34 @@ class ImportWidget(QWidget):
 
         # 方式二：手动粘贴URL
         url_group = QGroupBox("方式二：手动粘贴URL")
-        url_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        url_group.setStyleSheet(auto_group.styleSheet())
         url_layout = QVBoxLayout(url_group)
 
         url_desc = QLabel(
-            "通过抓包工具获取抽卡记录API的完整URL，粘贴到下方输入框。\n"
-            "终末地：粘贴鹰角账号Token（从 https://user.hypergryph.com/ 登录获取）"
+            "通过抓包工具获取抽卡记录API的完整URL，粘贴到下方输入框。"
         )
         url_desc.setStyleSheet("color: #666;")
         url_layout.addWidget(url_desc)
 
+        self._endfield_hint = QLabel(
+            "终末地：粘贴鹰角账号Token（点击下方登录获取按钮进行获取）"
+        )
+        self._endfield_hint.setStyleSheet("color: #666;")
+        url_layout.addWidget(self._endfield_hint)
+
+        self._arknights_hint = QLabel(
+            "明日方舟：粘贴鹰角账号Token（点击下方登录获取按钮进行获取）"
+        )
+        self._arknights_hint.setStyleSheet("color: #666;")
+        url_layout.addWidget(self._arknights_hint)
+
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("粘贴抽卡记录URL 或 终末地账号Token...")
+        self.url_input.setPlaceholderText("粘贴抽卡记录URL")
         url_layout.addWidget(self.url_input)
 
         url_btn_layout = QHBoxLayout()
         self.url_fetch_btn = QPushButton("解析获取")
+        self.url_fetch_btn.setObjectName("primary_button")
         self.url_fetch_btn.setFixedSize(120, 36)
         self.url_fetch_btn.clicked.connect(self._url_fetch)
         url_btn_layout.addWidget(self.url_fetch_btn)
@@ -163,7 +177,7 @@ class ImportWidget(QWidget):
 
         # 方式三：文件导入
         file_group = QGroupBox("方式三：文件导入")
-        file_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        file_group.setStyleSheet(auto_group.styleSheet())
         file_layout = QVBoxLayout(file_group)
 
         file_desc = QLabel("支持 JSON、Excel (.xlsx)、CSV 格式")
@@ -172,10 +186,13 @@ class ImportWidget(QWidget):
 
         file_btn_layout = QHBoxLayout()
         json_btn = QPushButton("导入 JSON")
+        json_btn.setObjectName("primary_button")
         json_btn.clicked.connect(lambda: self._import_file("json"))
         excel_btn = QPushButton("导入 Excel")
+        excel_btn.setObjectName("primary_button")
         excel_btn.clicked.connect(lambda: self._import_file("excel"))
         csv_btn = QPushButton("导入 CSV")
+        csv_btn.setObjectName("primary_button")
         csv_btn.clicked.connect(lambda: self._import_file("csv"))
 
         file_btn_layout.addWidget(json_btn)
@@ -487,6 +504,11 @@ class ImportWidget(QWidget):
                         self._log("  正在计算保底数...")
                         self.db.calculate_pity_counts(account.id)
                         self._log("  保底数计算完成")
+                        # 明日方舟自动更新卡池分类
+                        if account.game == "arknights":
+                            updated = self.main_window.settings_page._do_update_arknights_pool_types()
+                            if updated > 0:
+                                self._log(f"  已自动更新 {updated} 条卡池分类")
                     if skipped_count > 0:
                         self._log(f"  跳过 {skipped_count} 条重复记录")
         except Exception as e:
@@ -622,6 +644,11 @@ class ImportWidget(QWidget):
                 self._log("正在计算保底数...")
                 self.db.calculate_pity_counts(account.id)
                 self._log("保底数计算完成")
+                # 明日方舟自动更新卡池分类
+                if account.game == "arknights":
+                    updated = self.main_window.settings_page._do_update_arknights_pool_types()
+                    if updated > 0:
+                        self._log(f"已自动更新 {updated} 条卡池分类")
             if skipped_count > 0:
                 self._log(f"跳过 {skipped_count} 条重复记录")
 
@@ -729,6 +756,14 @@ class ImportWidget(QWidget):
         # 只有选择终末地、明日方舟或全部游戏时才显示登录按钮
         show_login = selected_id in ["all", "endfield", "arknights"]
         self.login_btn.setVisible(show_login)
+        # 终末地/明日方舟专用说明仅在对应游戏时显示
+        self._endfield_hint.setVisible(selected_id == "endfield")
+        self._arknights_hint.setVisible(selected_id == "arknights")
+        # 输入框占位文字跟随游戏切换
+        if selected_id in ("endfield", "arknights"):
+            self.url_input.setPlaceholderText("粘贴鹰角账号Token")
+        else:
+            self.url_input.setPlaceholderText("粘贴抽卡记录URL")
 
     def _paste_from_clipboard(self):
         from PySide6.QtWidgets import QApplication

@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont
 from core.database import Database
 from core.config import Config
 from core.models import Account, GAME_NAMES
+from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
 class SettingsWidget(QWidget):
@@ -42,7 +43,7 @@ class SettingsWidget(QWidget):
 
         # ===== 账号管理 =====
         account_group = QGroupBox("账号管理")
-        account_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        account_group.setStyleSheet(GROUPBOX_STYLE)
         account_layout = QVBoxLayout(account_group)
 
         self.account_table = QTableWidget()
@@ -50,6 +51,7 @@ class SettingsWidget(QWidget):
         self.account_table.setHorizontalHeaderLabels(["游戏", "UID", "昵称", "操作"])
         self.account_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.account_table.verticalHeader().setVisible(False)
+        self.account_table.verticalHeader().setDefaultSectionSize(40)
         self.account_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.account_table.setMinimumHeight(300)
         account_layout.addWidget(self.account_table)
@@ -69,7 +71,7 @@ class SettingsWidget(QWidget):
 
         # ===== 数据管理 =====
         data_group = QGroupBox("数据管理")
-        data_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        data_group.setStyleSheet(GROUPBOX_STYLE)
         data_layout = QVBoxLayout(data_group)
 
         btn_row1 = QHBoxLayout()
@@ -119,7 +121,7 @@ class SettingsWidget(QWidget):
 
         # ===== 缓存路径配置 =====
         path_group = QGroupBox("缓存路径配置")
-        path_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        path_group.setStyleSheet(GROUPBOX_STYLE)
         path_layout = QFormLayout(path_group)
 
         self.path_inputs = {}
@@ -149,7 +151,7 @@ class SettingsWidget(QWidget):
 
         # ===== 关于 =====
         about_group = QGroupBox("关于")
-        about_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        about_group.setStyleSheet(GROUPBOX_STYLE)
         about_layout = QVBoxLayout(about_group)
         about_layout.addWidget(QLabel("穷观阵 v1.0.0"))
         about_layout.addWidget(QLabel("支持游戏: 原神、星穹铁道、绝区零、鸣潮、终末地、明日方舟"))

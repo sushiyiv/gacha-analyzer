@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
 
         # Right content
         content_widget = QWidget()
-        content_widget.setStyleSheet("background-color: #f5f5f5;")
+        content_widget.setObjectName("content_widget")
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(16, 16, 16, 16)
 
@@ -225,7 +225,7 @@ class MainWindow(QMainWindow):
 
     def _show_game_manager(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("管理游戏")
+        dialog.setWindowTitle("游戏管理")
         dialog.setMinimumWidth(300)
         dialog.setMinimumHeight(350)
         layout = QVBoxLayout(dialog)
@@ -249,10 +249,20 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(list_widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff; color: #000000;
+                border: 1px solid #c0c0c0; border-radius: 6px;
+                padding: 8px 24px; font-size: 13px;
+                min-height: 20px; min-width: 60px;
+            }
+            QPushButton:hover { background-color: #f0f0f0; border-color: #1a73e8; }
+            QPushButton:pressed { background-color: #e0e0e0; }
+        """)
         buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        layout.setAlignment(buttons, Qt.AlignmentFlag.AlignCenter)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_order = []

@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont, QColor
 from core.database import Database
 from core.analyzer import PityAnalyzer, StatsAnalyzer
 from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names, get_endfield_pity_group, ENDFIELD_PITY_GROUP, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
+from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
 class StatsWidget(QWidget):
@@ -47,7 +48,7 @@ class StatsWidget(QWidget):
 
         # ===== 保底分析 =====
         pity_group = QGroupBox("保底分析")
-        pity_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        pity_group.setStyleSheet(GROUPBOX_STYLE)
         pity_layout = QVBoxLayout(pity_group)
 
         self.pity_summary = QLabel("暂无数据")
@@ -67,7 +68,7 @@ class StatsWidget(QWidget):
 
         # ===== 50/50 统计 =====
         featured_group = QGroupBox("50/50 统计")
-        featured_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        featured_group.setStyleSheet(GROUPBOX_STYLE)
         featured_layout = QVBoxLayout(featured_group)
 
         self.featured_summary = QLabel("暂无数据")
@@ -87,7 +88,7 @@ class StatsWidget(QWidget):
 
         # ===== 出货记录 =====
         pull_group = QGroupBox("出货记录")
-        pull_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        pull_group.setStyleSheet(GROUPBOX_STYLE)
         pull_layout = QVBoxLayout(pull_group)
 
         self.pull_table = QTableWidget()
@@ -115,7 +116,7 @@ class StatsWidget(QWidget):
 
         # ===== 概率预测 =====
         prob_group = QGroupBox("概率预测")
-        prob_group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 14px; }")
+        prob_group.setStyleSheet(GROUPBOX_STYLE)
         prob_layout = QVBoxLayout(prob_group)
 
         # 开关式切换按钮 - 用固定容器实现滑动效果
@@ -459,15 +460,18 @@ class StatsWidget(QWidget):
             self.pull_table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
             self.pull_table.setItem(i, 1, QTableWidgetItem(r.item_name))
 
+            star_colors = {3: "#888888", 4: "#9B59B6", 5: "#FFD700", 6: "#FF6B35"}
             star_item = QTableWidgetItem("★" * r.rarity)
-            star_item.setForeground(QColor("#FF6B35"))
+            star_item.setForeground(QColor(star_colors.get(r.rarity, "#FF6B35")))
             self.pull_table.setItem(i, 2, star_item)
 
             if is_arknights:
                 self.pull_table.setItem(i, 3, QTableWidgetItem(str(r.pity_count)))
                 self.pull_table.setItem(i, 4, QTableWidgetItem(r.pool_name or ""))
             else:
-                self.pull_table.setItem(i, 3, QTableWidgetItem("是" if r.is_featured else "否"))
+                up_item = QTableWidgetItem("是" if r.is_featured else "否")
+                up_item.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
+                self.pull_table.setItem(i, 3, up_item)
                 self.pull_table.setItem(i, 4, QTableWidgetItem(str(r.pity_count)))
                 self.pull_table.setItem(i, 5, QTableWidgetItem(r.time[:16] if r.time else ""))
 

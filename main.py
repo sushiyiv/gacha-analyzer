@@ -22,7 +22,38 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QFont, QIcon, QPalette, QColor
+
+
+def _force_light_palette(app: QApplication):
+    """强制使用浅色主题，不跟随系统深色模式"""
+    palette = QPalette()
+    light_colors = {
+        QPalette.Window: "#f5f5f5",
+        QPalette.WindowText: "#000000",
+        QPalette.Base: "#ffffff",
+        QPalette.AlternateBase: "#f5f5f5",
+        QPalette.ToolTipBase: "#ffffff",
+        QPalette.ToolTipText: "#000000",
+        QPalette.Text: "#000000",
+        QPalette.Button: "#e0e0e0",
+        QPalette.ButtonText: "#000000",
+        QPalette.BrightText: "#ffffff",
+        QPalette.Link: "#1a73e8",
+        QPalette.Highlight: "#1a73e8",
+        QPalette.HighlightedText: "#ffffff",
+        QPalette.PlaceholderText: "#999999",
+        QPalette.Dark: "#c0c0c0",
+        QPalette.Mid: "#c0c0c0",
+        QPalette.Light: "#c0c0c0",
+        QPalette.Midlight: "#c0c0c0",
+        QPalette.Shadow: "#c0c0c0",
+    }
+    for group in (QPalette.Active, QPalette.Inactive, QPalette.Disabled):
+        for role, color in light_colors.items():
+            palette.setColor(group, role, QColor(color))
+    app.setPalette(palette)
+
 
 from ui.main_window import MainWindow
 
@@ -50,6 +81,7 @@ def main():
     )
 
     app = QApplication(sys.argv)
+    _force_light_palette(app)
 
     icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
     if os.path.exists(icon_path):

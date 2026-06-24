@@ -18,15 +18,16 @@ class CheckListDelegate(QStyledItemDelegate):
         selected = index.data(Qt.ItemDataRole.UserRole + 1)
         rect = QRectF(option.rect)
 
-        # 整行背景
-        painter.setPen(Qt.PenStyle.NoPen)
+        # 卡片式背景（与游戏选择栏同款风格）
+        card = rect.adjusted(6, 3, -6, -3)
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRect(rect)
+        painter.setPen(QPen(QColor("#e0e0e0"), 1.5))
+        painter.drawRoundedRect(card, 10, 10)
 
-        # 复选框（垂直居中）
+        # 复选框（垂直居中，基于卡片区域）
         box_size = self._BOX
-        box_x = rect.left() + 14
-        box_y = rect.center().y() - box_size / 2.0
+        box_x = card.left() + 14
+        box_y = card.center().y() - box_size / 2.0
         box = QRectF(box_x, box_y, box_size, box_size)
 
         if selected:
@@ -49,18 +50,18 @@ class CheckListDelegate(QStyledItemDelegate):
             path.lineTo(box_x + box_size - 3, box_y + 3)
             painter.drawPath(path)
 
-        # 文字
+        # 文字（基于卡片区域）
         painter.setPen(QColor("#333333"))
         painter.setFont(option.font)
         text_x = box_x + box_size + 10
-        text_rect = QRectF(text_x, rect.top(),
-                           rect.width() - text_x - 8, rect.height())
+        text_rect = QRectF(text_x, card.top(),
+                           card.right() - text_x - 8, card.height())
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, index.data() or "")
 
         painter.restore()
 
     def sizeHint(self, option, index):
-        return QSize(200, 38)
+        return QSize(200, 46)
 
 
 class GameListDelegate(QStyledItemDelegate):

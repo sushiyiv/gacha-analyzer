@@ -46,7 +46,14 @@ class HomeWidget(QWidget):
         self._uid_btn = QPushButton("隐藏UID")
         self._uid_btn.setFixedHeight(28)
         self._uid_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._uid_btn.setStyleSheet("font-size: 11px; color: #888;")
+        self._uid_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 11px; font-weight: bold; color: #1a73e8;
+                border: 1px solid #1a73e8; border-radius: 6px;
+                padding: 0 10px;
+            }
+            QPushButton:hover { background: #e8f0fe; }
+        """)
         self._uid_btn.clicked.connect(self._toggle_uid)
         account_bar.addWidget(self._uid_btn)
 
@@ -55,6 +62,7 @@ class HomeWidget(QWidget):
         self._pool_plus_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._pool_plus_btn.setStyleSheet("""
             QPushButton {
+                background-color: transparent;
                 font-size: 11px; font-weight: bold; color: #1a73e8;
                 border: 1px solid #1a73e8; border-radius: 6px;
                 padding: 0 10px;
@@ -70,6 +78,7 @@ class HomeWidget(QWidget):
         self._star_filter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._star_filter_btn.setStyleSheet("""
             QPushButton {
+                background-color: transparent;
                 font-size: 11px; font-weight: bold; color: #1a73e8;
                 border: 1px solid #1a73e8; border-radius: 6px;
                 padding: 0 10px;
@@ -575,10 +584,20 @@ class HomeWidget(QWidget):
 
         layout.addWidget(list_widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff; color: #000000;
+                border: 1px solid #c0c0c0; border-radius: 6px;
+                padding: 8px 24px; font-size: 13px;
+                min-height: 20px; min-width: 60px;
+            }
+            QPushButton:hover { background-color: #f0f0f0; border-color: #1a73e8; }
+            QPushButton:pressed { background-color: #e0e0e0; }
+        """)
         buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        layout.setAlignment(buttons, Qt.AlignmentFlag.AlignCenter)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_order = []
@@ -696,6 +715,7 @@ class HomeWidget(QWidget):
         list_widget = GameListWidget()
         list_widget.setItemDelegate(CheckListDelegate(list_widget))
         list_widget.setStyleSheet("QListWidget { background-color: #ffffff; border: 1px solid #e0e0e0; }")
+        list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         star_labels = {3: "三星", 4: "四星", 5: "五星", 6: "六星"}
         for star in range(max_rarity, 0, -1):
@@ -708,10 +728,20 @@ class HomeWidget(QWidget):
 
         layout.addWidget(list_widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff; color: #000000;
+                border: 1px solid #c0c0c0; border-radius: 6px;
+                padding: 8px 24px; font-size: 13px;
+                min-height: 20px; min-width: 60px;
+            }
+            QPushButton:hover { background-color: #f0f0f0; border-color: #1a73e8; }
+            QPushButton:pressed { background-color: #e0e0e0; }
+        """)
         buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        layout.setAlignment(buttons, Qt.AlignmentFlag.AlignCenter)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected = []
