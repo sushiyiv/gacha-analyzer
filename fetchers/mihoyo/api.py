@@ -178,6 +178,7 @@ class MihoyoAPI:
             page = 1        # 每个新卡池从第1页开始
             end_id = "0"    # 每个新卡池从ID "0" 开始(表示从最早记录开始)
             pool_total = 0  # 当前卡池已获取的记录总数
+            pool_start_idx = len(all_records)  # 记录当前卡池在总列表中的起始位置
 
             if progress_callback:
                 progress_callback(f"开始获取 {pool_name} 记录...", pool_progress)
@@ -285,6 +286,10 @@ class MihoyoAPI:
                     raise APIError(f"网络请求失败: {str(e)}")
 
             # ----- 当前卡池处理完毕，进入下一个 -----
+            # API 返回记录是 newest-first，反转为 oldest-first
+            # 这样插入数据库后 ID 顺序与实际抽卡顺序一致，
+            # calculate_pity_counts 的 ORDER BY time ASC, id ASC 才能正确计算保底
+            all_records[pool_start_idx:] = reversed(all_records[pool_start_idx:])
             current_pool_idx += 1
 
         # ---------- 返回最终结果 ----------
