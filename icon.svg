@@ -1,63 +1,74 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e"/>
-      <stop offset="100%" style="stop-color:#16213e"/>
-    </linearGradient>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#1e2a4a"/>
+      <stop offset="100%" style="stop-color:#0f1729"/>
+    </radialGradient>
     <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#f0c040"/>
-      <stop offset="100%" style="stop-color:#e8a020"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4fc3f7"/>
-      <stop offset="100%" style="stop-color:#0288d1"/>
+      <stop offset="0%" style="stop-color:#ffd700"/>
+      <stop offset="100%" style="stop-color:#cc8800"/>
     </linearGradient>
   </defs>
 
   <!-- 背景圆 -->
-  <circle cx="64" cy="64" r="60" fill="url(#bg)" stroke="#e8a020" stroke-width="2.5"/>
-
-  <!-- 外圈八卦纹 -->
-  <g opacity="0.3" stroke="#4fc3f7" stroke-width="1" fill="none">
-    <circle cx="64" cy="64" r="52"/>
-    <circle cx="64" cy="64" r="48"/>
-    <!-- 八方位短线 -->
-    <line x1="64" y1="12" x2="64" y2="20"/>
-    <line x1="64" y1="108" x2="64" y2="116"/>
-    <line x1="12" y1="64" x2="20" y2="64"/>
-    <line x1="108" y1="64" x2="116" y2="64"/>
-    <line x1="27" y1="27" x2="33" y2="33"/>
-    <line x1="95" y1="95" x2="101" y2="101"/>
-    <line x1="101" y1="27" x2="95" y2="33"/>
-    <line x1="27" y1="101" x2="33" y2="95"/>
+  <circle cx="64" cy="64" r="62" fill="url(#bg)" stroke="#ffd700" stroke-width="2"/>
+  
+  <!-- 内圈 -->
+  <circle cx="64" cy="64" r="55" fill="none" stroke="#64b5f6" stroke-width="1" opacity="0.5"/>
+  
+  <!-- 八卦 - 乾卦 (上) -->
+  <g stroke="#64b5f6" stroke-width="2">
+    <line x1="56" y1="15" x2="72" y2="15"/>
+    <line x1="56" y1="20" x2="72" y2="20"/>
+    <line x1="56" y1="25" x2="72" y2="25"/>
   </g>
-
-  <!-- 中心六芒星阵 -->
-  <g fill="url(#gold)" opacity="0.9">
-    <!-- 正三角 -->
-    <polygon points="64,22 88,72 40,72" fill="none" stroke="#f0c040" stroke-width="2"/>
-    <!-- 倒三角 -->
-    <polygon points="64,106 40,56 88,56" fill="none" stroke="#f0c040" stroke-width="2"/>
+  
+  <!-- 八卦 - 坤卦 (下) -->
+  <g stroke="#64b5f6" stroke-width="2">
+    <line x1="56" y1="103" x2="61" y2="103"/>
+    <line x1="67" y1="103" x2="72" y2="103"/>
+    <line x1="56" y1="108" x2="61" y2="108"/>
+    <line x1="67" y1="108" x2="72" y2="108"/>
+    <line x1="56" y1="113" x2="61" y2="113"/>
+    <line x1="67" y1="113" x2="72" y2="113"/>
   </g>
-
+  
+  <!-- 八卦 - 震卦 (左) -->
+  <g stroke="#64b5f6" stroke-width="2">
+    <line x1="15" y1="56" x2="15" y2="72"/>
+    <line x1="20" y1="56" x2="20" y2="72"/>
+    <line x1="25" y1="56" x2="25" y2="72"/>
+  </g>
+  
+  <!-- 八卦 - 巽卦 (右) -->
+  <g stroke="#64b5f6" stroke-width="2">
+    <line x1="103" y1="56" x2="108" y2="56"/>
+    <line x1="103" y1="61" x2="108" y2="61"/>
+    <line x1="103" y1="67" x2="108" y2="67"/>
+  </g>
+  
+  <!-- 六芒星 - 正三角 -->
+  <polygon points="64,24 84,68 44,68" fill="none" stroke="url(#gold)" stroke-width="2.5"/>
+  
+  <!-- 六芒星 - 倒三角 -->
+  <polygon points="64,104 44,60 84,60" fill="none" stroke="url(#gold)" stroke-width="2.5"/>
+  
   <!-- 中心圆 -->
-  <circle cx="64" cy="64" r="14" fill="url(#bg)" stroke="url(#gold)" stroke-width="2"/>
-
-  <!-- 中心星 -->
-  <polygon points="64,52 67,60 76,60 69,65 71,74 64,69 57,74 59,65 52,60 61,60"
-           fill="url(#gold)" opacity="0.95"/>
-
-  <!-- 四角小菱形装饰 -->
-  <g fill="#4fc3f7" opacity="0.7">
-    <rect x="61" y="8" width="6" height="6" rx="1" transform="rotate(45,64,11)"/>
-    <rect x="61" y="114" width="6" height="6" rx="1" transform="rotate(45,64,117)"/>
-    <rect x="8" y="61" width="6" height="6" rx="1" transform="rotate(45,11,64)"/>
-    <rect x="114" y="61" width="6" height="6" rx="1" transform="rotate(45,117,64)"/>
-  </g>
-
-  <!-- 点缀小星 -->
-  <circle cx="64" cy="38" r="2" fill="#4fc3f7" opacity="0.8"/>
-  <circle cx="64" cy="90" r="2" fill="#4fc3f7" opacity="0.8"/>
-  <circle cx="38" cy="64" r="2" fill="#4fc3f7" opacity="0.8"/>
-  <circle cx="90" cy="64" r="2" fill="#4fc3f7" opacity="0.8"/>
+  <circle cx="64" cy="64" r="18" fill="none" stroke="#ffd700" stroke-width="1.5"/>
+  
+  <!-- 太极 - 阳 -->
+  <path d="M64,54 A10,10 0 0,1 64,74 A5,5 0 0,0 64,64 A5,5 0 0,1 64,54" fill="#ffd700"/>
+  
+  <!-- 太极 - 阴 -->
+  <path d="M64,74 A10,10 0 0,1 64,54 A5,5 0 0,1 64,64 A5,5 0 0,0 64,74" fill="#1e2a4a"/>
+  
+  <!-- 太极眼 -->
+  <circle cx="64" cy="59" r="1.5" fill="#1e2a4a"/>
+  <circle cx="64" cy="69" r="1.5" fill="#ffd700"/>
+  
+  <!-- 四角星 -->
+  <circle cx="40" cy="40" r="1.5" fill="#ffd700"/>
+  <circle cx="88" cy="40" r="1.5" fill="#ffd700"/>
+  <circle cx="40" cy="88" r="1.5" fill="#ffd700"/>
+  <circle cx="88" cy="88" r="1.5" fill="#ffd700"/>
 </svg>

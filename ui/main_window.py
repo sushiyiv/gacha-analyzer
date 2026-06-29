@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -63,7 +63,13 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 700)
         self.resize(1200, 750)
 
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icon.ico")
+        # 获取图标路径：exe 模式用 exe 目录，开发模式用 __file__ 目录
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.dirname(__file__))
+        icon_path = os.path.join(base_dir, "icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -152,7 +158,7 @@ class MainWindow(QMainWindow):
 
         nav_layout.addStretch()
 
-        version = QLabel("v1.0.0")
+        version = QLabel("v1.1.0")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: #bbb; font-size: 11px; padding: 8px;")
         nav_layout.addWidget(version)

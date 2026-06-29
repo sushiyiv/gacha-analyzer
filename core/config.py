@@ -46,11 +46,14 @@ class Config:
         # 由于 __new__ 的单例模式，__init__ 可能会被多次调用（每次调用 Config() 时）。
         # 通过检查 self._config 是否为 None 来确保初始化逻辑只执行一次。
         if self._config is None:  # 检查配置字典是否已初始化，只有首次调用时 _config 才为 None
-            self._base_dir = Path(__file__).parent.parent
-            # Path(__file__) 获取当前文件 config.py 的绝对路径
-            # .parent 获取其父目录（即 core/ 目录）
-            # .parent.parent 再获取上一级目录，即项目根目录（gacha-analyzer/）
-            # 结果是一个 Path 对象，后续所有相对路径都基于此目录进行拼接
+            import sys
+            # 判断是否在 PyInstaller 打包的 exe 中运行
+            if getattr(sys, 'frozen', False):
+                # exe 模式：使用 exe 所在目录作为项目根目录
+                self._base_dir = Path(sys.executable).parent
+            else:
+                # 开发模式：使用 config.py 所在目录的父目录作为项目根目录
+                self._base_dir = Path(__file__).parent.parent
 
             self._config_path = self._base_dir / "config.yaml"
             # 拼接全局配置文件的完整路径。"/" 运算符在 Path 对象中用于路径拼接

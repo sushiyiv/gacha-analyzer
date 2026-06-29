@@ -1,4 +1,4 @@
-﻿"""穷观阵 - 多游戏抽卡记录分析器"""
+"""穷观阵 - 多游戏抽卡记录分析器"""
 
 import sys
 import os
@@ -83,7 +83,12 @@ def main():
     app = QApplication(sys.argv)
     _force_light_palette(app)
 
-    icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+    # 获取图标路径：exe 模式用 exe 目录，开发模式用 __file__ 目录
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(__file__)
+    icon_path = os.path.join(base_dir, "icon.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
@@ -91,7 +96,7 @@ def main():
     app.setFont(font)
 
     app.setApplicationName("穷观阵")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.1.0")
     app.setOrganizationName("QianGuanZhen")
 
     app._preload_view = preload_webengine()

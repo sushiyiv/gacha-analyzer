@@ -148,7 +148,7 @@ QDialogButtonBox QPushButton:pressed {
 }
 
 /* 输入框 */
-QLineEdit, QTextEdit, QComboBox {
+QLineEdit, QTextEdit {
     border: 1px solid #c0c0c0;
     border-radius: 6px;
     padding: 8px 12px;
@@ -157,25 +157,45 @@ QLineEdit, QTextEdit, QComboBox {
     font-size: 13px;
 }
 
+QComboBox {
+    border: 1px solid #c0c0c0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    padding-right: 28px;
+    background-color: #ffffff;
+    font-size: 13px;
+}
+
 QLineEdit:focus, QTextEdit:focus {
     border-color: #1a73e8;
 }
 
-QComboBox {
-    selection-color: #000000;
-    selection-background-color: #e8f0fe;
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border-left: 1px solid #e0e0e0;
+    border-radius: 0 6px 6px 0;
+    background-color: #f8f8f8;
 }
 
-QComboBox::drop-down {
-    border: none;
-    width: 20px;
+QComboBox::down-arrow {
+    image: url(ui/resources/arrow.png);
+    width: 12px;
+    height: 12px;
+}
+
+QComboBox:hover {
+    border-color: #1a73e8;
+}
+
+QComboBox:hover::drop-down {
+    background-color: #f0f0f0;
 }
 
 QComboBox QAbstractItemView {
-    color: #000000;
     background-color: #ffffff;
-    selection-background-color: #e8f0fe;
-    selection-color: #000000;
+    border: 1px solid #c0c0c0;
 }
 
 /* 表格 */

@@ -38,7 +38,7 @@ class HomeWidget(QWidget):
         account_bar = QHBoxLayout()
         account_bar.addWidget(QLabel("账号:"))
         self.account_combo = QComboBox()
-        self.account_combo.setMinimumWidth(200)
+        self.account_combo.setMinimumWidth(300)
         self.account_combo.currentIndexChanged.connect(self._on_account_changed)
         account_bar.addWidget(self.account_combo)
 
@@ -837,7 +837,7 @@ class HomeWidget(QWidget):
         """更新单个标签页的统计和表格"""
         stat_items = tab._stat_items
         pool_type = tab._pool_type
-        max_rarity = get_pity_rarity(game, pool_type)
+        max_rarity = get_max_rarity(game)
 
         sorted_records = sorted(records, key=lambda r: (r.time, r.id))
         total = len(records)
