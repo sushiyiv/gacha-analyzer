@@ -7,23 +7,34 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QFont
 
-import matplotlib
-matplotlib.use('QtAgg')
-matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
-matplotlib.rcParams['axes.unicode_minus'] = False
-
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
 from core.database import Database
 from core.analyzer import StatsAnalyzer, PityAnalyzer, get_rate_at_pull
 from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names
+
+# matplotlib 惰性导入：仅在首次实例化 ChartWidget 时加载
+_mpl_loaded = False
+
+def _ensure_matplotlib():
+    global _mpl_loaded
+    if _mpl_loaded:
+        return
+    import matplotlib
+    matplotlib.use('QtAgg')
+    matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+    matplotlib.rcParams['axes.unicode_minus'] = False
+    _mpl_loaded = True
 
 
 class ChartWidget(QWidget):
     """图表展示页面"""
 
     def __init__(self, main_window):
+        _ensure_matplotlib()
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.figure import Figure
+        self.FigureCanvas = FigureCanvas
+        self.Figure = Figure
+
         super().__init__()
         self.main_window = main_window
         self.db = Database()
@@ -149,9 +160,9 @@ class ChartWidget(QWidget):
         title.setFont(QFont("Microsoft YaHei", 13, QFont.Weight.Bold))
         layout.addWidget(title)
 
-        fig = Figure(figsize=figsize, dpi=100)
+        fig = self.Figure(figsize=figsize, dpi=100)
         fig.set_facecolor('white')
-        canvas = FigureCanvas(fig)
+        canvas = self.FigureCanvas(fig)
         canvas.setMinimumHeight(300)
 
         # 让滚轮事件传递给父级滚动区域

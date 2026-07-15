@@ -13,8 +13,6 @@ from PySide6.QtGui import QFont
 
 from core.database import Database
 from core.models import Account, GachaRecord, GAME_NAMES
-from fetchers import get_fetcher
-from fetchers.url_parser import URLParser
 from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
@@ -41,6 +39,7 @@ class FetchThread(QThread):
 
     def run(self):
         try:
+            from fetchers import get_fetcher
             fetcher = get_fetcher(self.game)
             self._fetcher_instance = fetcher  # 保存引用供取消时使用
             fetcher.set_progress_callback(lambda msg, p: self.progress.emit(msg, p))
@@ -108,6 +107,13 @@ class ImportWidget(QWidget):
         self.auto_fetch_btn.setFixedSize(100, 32)
         self.auto_fetch_btn.clicked.connect(self._auto_fetch)
         select_layout.addWidget(self.auto_fetch_btn)
+
+        self.auto_url_btn = QPushButton("获取URL")
+        self.auto_url_btn.setObjectName("primary_button")
+        self.auto_url_btn.setFixedSize(100, 32)
+        self.auto_url_btn.clicked.connect(self._extract_url)
+        select_layout.addWidget(self.auto_url_btn)
+
         select_layout.addStretch()
         auto_layout.addLayout(select_layout)
 
@@ -242,6 +248,49 @@ class ImportWidget(QWidget):
 
     def _log(self, message):
         self.log_text.append(message)
+
+    def _extract_url(self):
+        """从缓存中提取抽卡URL并显示"""
+        from fetchers.cache_reader import CacheReader
+
+        game_id = self.auto_game_combo.currentData()
+        if game_id == "all":
+            QMessageBox.information(self, "提示", "请先选择一个具体的游戏")
+            return
+
+        # 终末地和明日方舟不支持缓存URL提取
+        if game_id in ("endfield", "arknights"):
+            QMessageBox.information(self, "提示",
+                f"{GAME_NAMES.get(game_id, game_id)}不支持从缓存提取URL，\n请使用方式二登录获取。")
+            return
+
+        self._log(f"正在提取 {GAME_NAMES.get(game_id, game_id)} 的URL...")
+        try:
+            cache = CacheReader()
+            url = cache.extract_url(game_id)
+        except Exception as e:
+            self._log(f"提取失败: {e}")
+            QMessageBox.warning(self, "错误", f"提取URL失败:\n{e}")
+            return
+
+        if not url:
+            self._log("未找到URL")
+            QMessageBox.information(self, "提示",
+                "未找到抽卡记录URL。\n\n"
+                "请确保：\n"
+                "1. 已打开游戏\n"
+                "2. 进入抽卡/跃迁记录页面\n"
+                "3. 等待记录加载完成\n"
+                "4. 切回本程序重试")
+            return
+
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(url)
+        self._log(f"URL已复制到剪贴板 ({len(url)} 字符)")
+        QMessageBox.information(self, "完成",
+            f"URL已复制到剪贴板！\n\n"
+            f"长度: {len(url)} 字符\n\n"
+            f"可粘贴到浏览器或其他工具中使用。")
 
     def _auto_fetch(self):
         """自动获取 - 自动检测选中的游戏"""

@@ -14,12 +14,6 @@ from ui.widgets.game_list import GameListDelegate, GameListWidget, CheckListDele
 from core.database import Database
 from core.config import Config
 from core.models import GAME_NAMES, GAME_COLORS
-from ui.widgets.home_widget import HomeWidget
-from ui.widgets.import_widget import ImportWidget
-from ui.widgets.manual_add_widget import ManualAddWidget
-from ui.widgets.stats_widget import StatsWidget
-from ui.widgets.chart_widget import ChartWidget
-from ui.widgets.settings_widget import SettingsWidget
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +26,10 @@ class MainWindow(QMainWindow):
         self.config = Config()
         self.current_account = None
         self.current_game = "genshin"
+
+        self._page_map = {}
+        self._page_classes = {}
+
         self._init_ui()
         self._load_style()
 
@@ -50,7 +48,8 @@ class MainWindow(QMainWindow):
 
         def do_update():
             try:
-                updated = self.settings_page._do_update_arknights_pool_types()
+                settings = self._ensure_page("settings")
+                updated = settings._do_update_arknights_pool_types()
                 if updated > 0:
                     logger.info("auto-update arknights pool types: %d records", updated)
             except Exception:
@@ -63,13 +62,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 700)
         self.resize(1200, 750)
 
-        # 获取图标路径：exe 模式用 exe 目录，开发模式用 __file__ 目录
-        import sys
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(__file__))
-        icon_path = os.path.join(base_dir, "icon.ico")
+        # 获取图标路径
+        icon_path = str(self.config.base_dir / "icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
@@ -185,16 +179,8 @@ class MainWindow(QMainWindow):
         self.page_stack = QStackedWidget()
         content_layout.addWidget(self.page_stack)
 
-        self.home_page = HomeWidget(self)
-        self.import_page = ImportWidget(self)
-        self.manual_page = ManualAddWidget(self)
-        self.stats_page = StatsWidget(self)
-        self.chart_page = ChartWidget(self)
-        self.settings_page = SettingsWidget(self)
-
-        for page in [self.home_page, self.import_page, self.manual_page,
-                     self.stats_page, self.chart_page, self.settings_page]:
-            self.page_stack.addWidget(page)
+        # 首页立即创建
+        self._ensure_page("home")
 
         main_layout.addWidget(content_widget)
 
@@ -315,16 +301,42 @@ class MainWindow(QMainWindow):
         self.current_account = accounts[0] if accounts else None
         self._refresh_current_page()
 
+    def _ensure_page(self, name):
+        if name not in self._page_map:
+            if name == "home":
+                from ui.widgets.home_widget import HomeWidget
+                page = HomeWidget(self)
+            elif name == "import":
+                from ui.widgets.import_widget import ImportWidget
+                page = ImportWidget(self)
+            elif name == "manual":
+                from ui.widgets.manual_add_widget import ManualAddWidget
+                page = ManualAddWidget(self)
+            elif name == "stats":
+                from ui.widgets.stats_widget import StatsWidget
+                page = StatsWidget(self)
+            elif name == "chart":
+                from ui.widgets.chart_widget import ChartWidget
+                page = ChartWidget(self)
+            elif name == "settings":
+                from ui.widgets.settings_widget import SettingsWidget
+                page = SettingsWidget(self)
+            else:
+                return None
+            self._page_map[name] = page
+            self.page_stack.addWidget(page)
+        return self._page_map[name]
+
     def _on_nav_changed(self, page: str):
-        pages = {"home": 0, "import": 1, "manual": 2, "stats": 3, "chart": 4, "settings": 5}
-        self.page_stack.setCurrentIndex(pages.get(page, 0))
+        widget = self._ensure_page(page)
+        self.page_stack.setCurrentWidget(widget)
         for key, btn in self.nav_buttons.items():
             btn.setChecked(key == page)
         self._refresh_current_page()
 
     def _refresh_current_page(self):
-        page = self.page_stack.widget(self.page_stack.currentIndex())
-        if hasattr(page, 'refresh'):
+        page = self.page_stack.currentWidget()
+        if page and hasattr(page, 'refresh'):
             page.refresh()
 
     def get_current_game(self) -> str:

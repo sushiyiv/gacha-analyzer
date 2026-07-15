@@ -50,7 +50,14 @@ class Config:
             # 判断是否在 PyInstaller 打包的 exe 中运行
             if getattr(sys, 'frozen', False):
                 # exe 模式：使用 exe 所在目录作为项目根目录
-                self._base_dir = Path(sys.executable).parent
+                exe_dir = Path(sys.executable).parent
+                # onedir 模式下数据文件在 _internal 子目录中
+                if (exe_dir / "_internal" / "config.yaml").exists():
+                    self._base_dir = exe_dir / "_internal"
+                elif (exe_dir / "config.yaml").exists():
+                    self._base_dir = exe_dir
+                else:
+                    self._base_dir = exe_dir
             else:
                 # 开发模式：使用 config.py 所在目录的父目录作为项目根目录
                 self._base_dir = Path(__file__).parent.parent

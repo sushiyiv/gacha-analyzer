@@ -5,7 +5,16 @@ import os
 import logging
 
 # 确保项目根目录在 Python 路径中，并切换工作目录
-_project_dir = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    # PyInstaller exe 模式
+    _exe_dir = os.path.dirname(sys.executable)
+    # onedir 模式下数据文件在 _internal 子目录中
+    if os.path.exists(os.path.join(_exe_dir, "_internal", "config.yaml")):
+        _project_dir = os.path.join(_exe_dir, "_internal")
+    else:
+        _project_dir = _exe_dir
+else:
+    _project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _project_dir)
 os.chdir(_project_dir)
 
@@ -58,21 +67,6 @@ def _force_light_palette(app: QApplication):
 from ui.main_window import MainWindow
 
 
-def preload_webengine():
-    """预加载 WebEngine 组件，避免登录时卡顿"""
-    try:
-        from PySide6.QtWebEngineWidgets import QWebEngineView
-        from PySide6.QtWebEngineCore import QWebEngineProfile
-        view = QWebEngineView()
-        profile = QWebEngineProfile("Preload", view)
-        view.setPage(profile.createPage(view))
-        view.setUrl("about:blank")
-        return view
-    except Exception:
-        logger.debug("WebEngine preload skipped (not installed or unavailable)")
-        return None
-
-
 def main():
     logger.info("穷观阵启动中...")
 
@@ -83,12 +77,8 @@ def main():
     app = QApplication(sys.argv)
     _force_light_palette(app)
 
-    # 获取图标路径：exe 模式用 exe 目录，开发模式用 __file__ 目录
-    if getattr(sys, 'frozen', False):
-        base_dir = os.path.dirname(sys.executable)
-    else:
-        base_dir = os.path.dirname(__file__)
-    icon_path = os.path.join(base_dir, "icon.ico")
+    # 获取图标路径
+    icon_path = os.path.join(_project_dir, "icon.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
@@ -98,8 +88,6 @@ def main():
     app.setApplicationName("穷观阵")
     app.setApplicationVersion("1.1.0")
     app.setOrganizationName("QianGuanZhen")
-
-    app._preload_view = preload_webengine()
 
     window = MainWindow()
     window.show()

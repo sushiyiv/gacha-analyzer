@@ -169,18 +169,21 @@ class CacheReader:
         elif game == "starrail":
             # ---- 崩坏：星穹铁道 (Honkai: Star Rail) 的日志路径解析 ----
 
-            # 匹配日志中 "Loading player data from" 行中的路径
-            # 正则解析：
-            #   Loading player data from  - 固定的前缀文本
-            #   (.+?)  - 非贪婪捕获：匹配到 /Game/StarRail_Data 之前的所有字符
-            #   /Game/StarRail_Data  - 星穹铁道特有的数据目录路径结构
+            # 模式1：从 reportPath JSON 字段中提取路径（新版日志格式）
+            # 日志中包含 reportPath":"E:\\miHoYo Launcher\\games\\Star Rail Game\\StarRail_Data\\SDKCaches\\webview"
+            match = re.search(
+                r'reportPath":"(.+?StarRail_Data)',
+                content
+            )
+            if match:
+                return match.group(1).replace("\\\\", "/").replace("\\", "/")
+
+            # 模式2：匹配日志中 "Loading player data from" 行中的路径（旧版日志格式）
             match = re.search(
                 r'Loading player data from (.+?)/Game/StarRail_Data',
                 content
             )
             if match:
-                # 提取基础路径并拼接完整路径返回
-                # 例如返回 "E:/Games/Star Rail Game/Game/StarRail_Data"
                 return match.group(1) + "/Game/StarRail_Data"
 
         elif game == "zzz":
@@ -266,6 +269,28 @@ class CacheReader:
                     str(Path.home() / "AppData/LocalLow/Cognosphere/Genshin Impact/LocalLog.log"),
                     # 原神国际服输出日志文件
                     str(Path.home() / "AppData/LocalLow/Cognosphere/Genshin Impact/output_log.txt"),
+                ]
+        elif game == "starrail":
+            # ---- 崩坏：星穹铁道的备选日志路径 ----
+            if region == "cn":
+                paths = [
+                    str(Path.home() / "AppData/LocalLow/miHoYo/崩坏：星穹铁道/output_log.txt"),
+                    str(Path.home() / "AppData/LocalLow/miHoYo/崩坏：星穹铁道/Player.log"),
+                ]
+            else:
+                paths = [
+                    str(Path.home() / "AppData/LocalLow/Cognosphere/Star Rail/output_log.txt"),
+                    str(Path.home() / "AppData/LocalLow/Cognosphere/Star Rail/Player.log"),
+                ]
+        elif game == "zzz":
+            # ---- 绝区零的备选日志路径 ----
+            if region == "cn":
+                paths = [
+                    str(Path.home() / "AppData/LocalLow/miHoYo/绝区零/output_log.txt"),
+                ]
+            else:
+                paths = [
+                    str(Path.home() / "AppData/LocalLow/Cognosphere/ZZZ/output_log.txt"),
                 ]
         elif game == "wutheringwaves":
             # ---- 鸣潮的备选日志路径 ----

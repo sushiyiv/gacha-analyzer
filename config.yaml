@@ -31,8 +31,8 @@ cache_paths:
     cn: "AppData/LocalLow/miHoYo/原神/output_log.txt"
     os: "AppData/LocalLow/Cognosphere/Genshin Impact/output_log.txt"
   starrail:
-    cn: "AppData/LocalLow/miHoYo/崩坏：星穹铁道/Player.log"
-    os: "AppData/LocalLow/Cognosphere/Star Rail/Player.log"
+    cn: "AppData/LocalLow/miHoYo/崩坏：星穹铁道/output_log.txt"
+    os: "AppData/LocalLow/Cognosphere/Star Rail/output_log.txt"
   zzz:
     cn: "AppData/LocalLow/miHoYo/绝区零/output_log.txt"
     os: "AppData/LocalLow/Cognosphere/ZZZ/output_log.txt"

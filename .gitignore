@@ -1,4 +1,4 @@
-﻿# ===== 个人数据（抽卡记录、账号信息、用户配置）=====
+# ===== 个人数据（抽卡记录、账号信息、用户配置）=====
 data/gacha_records.db
 data/gacha_records.db-shm
 data/gacha_records.db-wal
@@ -6,6 +6,7 @@ data/gacha.db
 data/backups/
 data/exports/
 data/user_config.yaml
+data/data/
 
 # ===== 日志 =====
 debug_*.log
@@ -55,4 +56,9 @@ Desktop.ini
 .BIN/
 # ===== 运行日志 =====
 data/logs/
+
+# ===== 启动脚本 =====
+穷观阵.cmd
+穷观阵.vbs
+穷观阵.bat
 
