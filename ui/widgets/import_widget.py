@@ -268,8 +268,6 @@ class ImportWidget(QWidget):
 
     def _extract_url(self):
         """从缓存中提取抽卡URL并显示"""
-        from fetchers.cache_reader import CacheReader
-
         game_id = self.auto_game_combo.currentData()
         if game_id == "all":
             QMessageBox.information(self, "提示", "请先选择一个具体的游戏")
@@ -283,8 +281,15 @@ class ImportWidget(QWidget):
 
         self._log(f"正在提取 {GAME_NAMES.get(game_id, game_id)} 的URL...")
         try:
-            cache = CacheReader()
-            url = cache.extract_url(game_id)
+            # 鸣潮需要专用的日志解密
+            if game_id == "wutheringwaves":
+                from fetchers.kuro.wutheringwaves import WutheringWavesFetcher
+                fetcher = WutheringWavesFetcher()
+                url = fetcher._get_url_from_log()
+            else:
+                from fetchers.cache_reader import CacheReader
+                cache = CacheReader()
+                url = cache.extract_url(game_id)
         except Exception as e:
             self._log(f"提取失败: {e}")
             QMessageBox.warning(self, "错误", f"提取URL失败:\n{e}")
@@ -352,7 +357,13 @@ class ImportWidget(QWidget):
         # 只扫描选中的游戏
         for game_id in selected:
             try:
-                url = cache.extract_url(game_id)
+                # 鸣潮需要专用的日志解密
+                if game_id == "wutheringwaves":
+                    from fetchers.kuro.wutheringwaves import WutheringWavesFetcher
+                    fetcher = WutheringWavesFetcher()
+                    url = fetcher._get_url_from_log()
+                else:
+                    url = cache.extract_url(game_id)
                 if url:
                     detected_games.append((game_id, url))
             except Exception as e:
