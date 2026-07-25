@@ -50,6 +50,11 @@ class MihoyoAPI:
         # 该端点用于查询绝区零的调频记录
     }
 
+    # 联动池使用不同的API端点(getLdGachaLog)
+    COLLAB_ENDPOINTS = {
+        "starrail": "https://public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getLdGachaLog",
+    }
+
     # ==================== 卡池类型编码映射 ====================
     # 米哈游API使用数字编码来区分不同的卡池类型
     # 每个游戏的编码方案不同，这里统一管理映射关系
@@ -66,8 +71,8 @@ class MihoyoAPI:
             "weapon": "12",        # 光锥活动跃迁(限定武器UP池)，编码12
             "standard": "1",       # 常驻跃迁(标准池)，编码1
             "beginner": "2",       # 始发跃迁(新手池)，编码2
-            "collab": "13",        # 联动角色跃迁，编码13
-            "collab_weapon": "14", # 联动光锥跃迁，编码14
+            "collab": "21",        # 联动角色跃迁，编码21
+            "collab_weapon": "22", # 联动光锥跃迁，编码22
         },
         "zzz": {
             "character": "2001",       # 频调(角色UP池)，编码2001
@@ -156,6 +161,17 @@ class MihoyoAPI:
                 auth_params[key] = base_params[key][0]
                 # base_params[key] 是一个列表，取第一个元素(通常是唯一的值)
 
+        # 联动池可能需要额外参数(gacha_id, decide_item_id_list, timestamp)
+        collab_extra_params = {}
+        for key in ["gacha_id", "decide_item_id_list", "timestamp"]:
+            if key in base_params:
+                val = base_params[key][0]
+                # decide_item_id_list 是双重编码的(如 %252C → %2C)，需要再解码一次为逗号分隔
+                if key == "decide_item_id_list":
+                    from urllib.parse import unquote
+                    val = unquote(val)
+                collab_extra_params[key] = val
+
         # ---------- 第四步: 初始化获取状态 ----------
         all_records = []       # 存储所有卡池的所有记录
         detected_uid = ""      # 从记录中检测到的玩家UID
@@ -170,6 +186,12 @@ class MihoyoAPI:
         for pool_name, gacha_type_id in gacha_types.items():
             # pool_name: 卡池类型名称(如 "character", "weapon")
             # gacha_type_id: 对应的API编码(如 "301", "302")
+
+            # 联动池使用不同的API端点(getLdGachaLog)
+            if pool_name in ("collab", "collab_weapon") and game in self.COLLAB_ENDPOINTS:
+                pool_endpoint = self.COLLAB_ENDPOINTS[game]
+            else:
+                pool_endpoint = endpoint
 
             pool_progress = current_pool_idx / total_pools
             # 当前卡池的基础进度值，表示已完成的卡池占比
@@ -200,15 +222,13 @@ class MihoyoAPI:
                     "size": "20",            # 每页记录数，API最大支持20条
                     "end_id": end_id,        # 分页游标，返回ID > end_id 的记录
                 }
-
-                # ----- 调试日志 -----
-                if page <= 3 or page % 10 == 0:
-                    # 前3页和之后每10页打印一次调试信息，避免日志过多
-                    print(f"[DEBUG] 获取 {pool_name} 第{page}页, end_id={end_id}")
+                # 联动池需要额外参数才能返回数据
+                if pool_name in ("collab", "collab_weapon"):
+                    params.update(collab_extra_params)
 
                 try:
                     # ----- 发送HTTP请求 -----
-                    resp = requests.get(endpoint, params=params, timeout=30)
+                    resp = requests.get(pool_endpoint, params=params, timeout=30)
                     # 使用GET请求，参数会自动拼接到URL查询字符串中
                     # timeout=30 表示30秒超时，避免网络卡住时无限等待
 
@@ -218,7 +238,6 @@ class MihoyoAPI:
                     except Exception as e:
                         # JSON解析失败(可能是服务器返回了HTML错误页面)
                         raise APIError(f"解析响应失败: {str(e)}\n响应内容: {resp.text[:200]}")
-                        # 截取响应内容前200字符作为错误信息的一部分，便于调试
 
                     # ----- 检查API业务状态码 -----
                     if data.get("retcode") != 0:
@@ -228,11 +247,17 @@ class MihoyoAPI:
                         if "authkey" in msg_lower or "auth key" in msg_lower or "expired" in msg_lower or "time out" in msg_lower:
                             # authkey相关错误，通常是URL过期(一般有效期为几个小时)
                             raise APIError("authkey 已过期，请重新获取")
-                        raise APIError(f"API 错误: {msg}")  # 其他业务错误
+                        # 单个池子出错时跳过，继续获取其他池子
+                        if progress_callback:
+                            progress_callback(f"{pool_name} 获取失败: {msg}，跳过", pool_progress + 1.0 / total_pools)
+                        break
 
                     # ----- 提取记录列表 -----
                     records = data.get("data", {}).get("list", [])
                     # API响应结构: {"retcode": 0, "message": "OK", "data": {"list": [...], "size": 20}}
+                    # 部分池子(如联动池)可能使用 list_v2 字段返回数据
+                    if not records:
+                        records = data.get("data", {}).get("list_v2", [])
                     # 如果list为空，说明当前卡池的记录已全部获取完毕
                     if not records:
                         if progress_callback:

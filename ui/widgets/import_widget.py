@@ -1143,8 +1143,8 @@ class ImportWidget(QWidget):
                 "2": "beginner",
                 "11": "character",
                 "12": "weapon",
-                "13": "collab",
-                "14": "collab_weapon",
+                "21": "collab",
+                "22": "collab_weapon",
             },
             "zzz": {
                 "1001": "standard",

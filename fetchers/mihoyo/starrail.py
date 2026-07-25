@@ -39,13 +39,14 @@ class StarRailFetcher(MihoyoGachaFetcher):
     # 星铁的中文显示名称，用于进度提示消息中
     # 例如: "正在获取崩坏：星穹铁道抽卡记录..."
 
-    supported_pools = ["character", "weapon", "standard", "beginner"]
+    supported_pools = ["character", "weapon", "standard", "beginner", "collab", "collab_weapon"]
     # 星铁支持的卡池类型列表:
-    # - "character": 角色活动跃迁(限定角色UP池，编码11)
-    # - "weapon":    光锥活动跃迁(限定光锥UP池，编码12)
-    # - "standard":  常驻跃迁(标准池，编码1)
-    # - "beginner":  始发跃迁(新手池，编码2)
-    # 注意: 联动卡池(collab=13, collab_weapon=14)在GACHA_TYPES中定义但未列入supported_pools
+    # - "character":     角色活动跃迁(限定角色UP池，编码11)
+    # - "weapon":        光锥活动跃迁(限定光锥UP池，编码12)
+    # - "standard":      常驻跃迁(标准池，编码1)
+    # - "beginner":      始发跃迁(新手池，编码2)
+    # - "collab":        联动角色跃迁(编码21)
+    # - "collab_weapon": 联动光锥跃迁(编码22)
 
     cache_game_key = "starrail"
     # CacheReader使用的缓存目录标识key
