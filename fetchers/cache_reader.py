@@ -20,7 +20,10 @@
 # ==================== 标准库导入 ====================
 
 import os  # 操作系统接口模块，用于文件路径操作、文件存在性检查、环境变量读取等
+import logging
 import re  # 正则表达式模块，用于从缓存文本中匹配和提取 URL 及关键信息
+
+logger = logging.getLogger(__name__)
 from pathlib import Path  # 面向对象的文件系统路径模块，提供跨平台的路径操作方法
 
 # ==================== 类型标注导入 ====================
@@ -677,6 +680,7 @@ class CacheReader:
             content = data.decode("utf-8", errors="ignore")
         except Exception:
             # 文件读取或解码失败（文件损坏、权限问题等）
+            logger.debug("缓存文件读取失败: %s", filepath)
             return None
 
         # ---- 第二步：根据游戏类型选择匹配策略 ----
@@ -823,6 +827,7 @@ class CacheReader:
                         return uid  # 返回有效的 UID
             except Exception:
                 # 文件读取失败（权限不足、文件损坏等）
+                logger.debug("UID文件读取失败: %s", fp)
                 pass  # 静默失败，继续执行
 
         # 文件不存在或读取失败
@@ -883,6 +888,7 @@ class CacheReader:
 
         except Exception:
             # 捕获所有异常，静默失败
+            logger.debug("昵称文件读取失败")
             pass
 
         # 未找到昵称信息

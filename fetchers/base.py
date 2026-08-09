@@ -7,6 +7,10 @@
 
 # ========================= 标准库导入 =========================
 
+# logging 模块提供日志记录功能
+# 用于记录错误、警告、调试信息等，便于排查问题
+import logging
+
 # time 模块提供时间相关函数，本文件主要用于:
 #   - time.time()  获取当前 Unix 时间戳（浮点数，单位: 秒）
 #   - time.sleep() 暂停线程执行指定秒数，用于请求限流
@@ -41,6 +45,8 @@ from core.models import GachaRecord
 #   - 提供请求间隔、超时时间等网络参数
 #   - 管理 API 基础 URL、语言设置等
 from core.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 # ========================= 统一错误类 =========================
@@ -289,17 +295,20 @@ class BaseFetcher(ABC):
         except requests.exceptions.Timeout:
             # 请求超时 —— 可能原因: 网络慢、服务端无响应、DNS 解析慢
             # 将原始异常信息丢弃，抛出面向用户的中文提示
+            logger.error("请求超时")
             raise FetcherError("请求超时，请检查网络连接")
 
         except requests.exceptions.HTTPError as e:
             # HTTP 状态码错误 —— e.response 是完整的 Response 对象，
             # e.response.status_code 是具体的错误码（如 403、500、429）
             # 将状态码嵌入错误消息，便于排查
+            logger.error("HTTP错误: %s", e.response.status_code)
             raise FetcherError(f"HTTP错误: {e.response.status_code}")
 
         except requests.exceptions.ConnectionError:
             # 网络连接失败 —— 可能原因: DNS 解析失败、目标主机不可达、
             # 本地无网络连接、防火墙拦截
+            logger.error("网络连接失败")
             raise FetcherError("网络连接失败，请检查网络")
 
         except Exception as e:
@@ -309,6 +318,7 @@ class BaseFetcher(ABC):
             #   - UnicodeDecodeError（编码问题）
             #   - ValueError / TypeError（数据解析异常）
             # 将异常信息转为字符串后嵌入 FetcherError 消息中
+            logger.exception("请求失败")
             raise FetcherError(f"请求失败: {str(e)}")
 
     # ========================= 抽象方法 =========================

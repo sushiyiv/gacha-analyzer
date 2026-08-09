@@ -4,7 +4,7 @@ import math
 from collections import Counter, defaultdict
 from datetime import datetime
 from typing import List, Dict, Optional
-from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, Rarity, get_max_rarity, get_mechanic_type
+from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, Rarity, get_max_rarity
 
 
 def get_rate_at_pull(config: BannerConfig, pull_number: int) -> float:
@@ -65,12 +65,7 @@ class PityAnalyzer:
 
     def __init__(self, game: str, pool_type: str, pool_name: str = ""):
         self.game = game
-        # 根据游戏和卡池名获取实际的保底机制类型
-        mechanic_type = get_mechanic_type(game, pool_type, pool_name)
-        self.config = BANNER_CONFIGS.get((game, mechanic_type))
-        if not self.config:
-            # 回退到 pool_type 直接查找
-            self.config = BANNER_CONFIGS.get((game, pool_type))
+        self.config = BANNER_CONFIGS.get((game, pool_type))
         if not self.config:
             raise ValueError(f"未知的卡池配置: {game} / {pool_type}")
 
@@ -119,26 +114,8 @@ class PityAnalyzer:
         # 各抽数阈值概率
         prob_table = {}
         for t in [10, 20, 30, 50, 70, 80, 90, 100, 120, 150]:
-            if t <= self.config.hard_pity or (self.config.up_hard_pity and t <= self.config.up_hard_pity):
+            if t <= self.config.hard_pity:
                 prob_table[t] = get_pull_probability(self.config, current_pity, t)
-
-        # UP硬保底进度（追踪距离上次UP 6星的抽数，非任意6星）
-        up_hard_pity_remaining = 0
-        if self.config.up_hard_pity > 0:
-            last_featured_idx = -1
-            for i, r in enumerate(sorted_records):
-                if r.rarity == max_rarity and r.is_featured:
-                    last_featured_idx = i
-            if last_featured_idx >= 0:
-                pulls_since_featured = len(sorted_records) - 1 - last_featured_idx
-            else:
-                pulls_since_featured = len(sorted_records)
-            up_hard_pity_remaining = max(0, self.config.up_hard_pity - pulls_since_featured)
-
-        # 十连保底进度
-        multi_pity_progress = 0
-        if self.config.multi_pity_size > 0:
-            multi_pity_progress = current_pity % self.config.multi_pity_size
 
         # 自选/兑换进度
         exchange_progress = 0
@@ -166,11 +143,6 @@ class PityAnalyzer:
             "featured_rate": round(featured_wins / len(five_stars) * 100, 1) if five_stars else 0,
             "five_stars": five_stars,
             "rate_curve": self._get_rate_curve(current_pity),
-            # 扩展字段
-            "up_hard_pity": self.config.up_hard_pity,
-            "up_hard_pity_remaining": up_hard_pity_remaining,
-            "multi_pity_size": self.config.multi_pity_size,
-            "multi_pity_progress": multi_pity_progress,
             "exchange_threshold": self.config.exchange_threshold,
             "exchange_progress": exchange_progress,
             "description": self.config.description,
@@ -195,10 +167,6 @@ class PityAnalyzer:
             "pity_counts": [], "avg_pity": 0, "min_pity": 0, "max_pity": 0,
             "featured_wins": 0, "featured_losses": 0, "featured_rate": 0,
             "five_stars": [], "rate_curve": [],
-            "up_hard_pity": self.config.up_hard_pity,
-            "up_hard_pity_remaining": self.config.up_hard_pity,
-            "multi_pity_size": self.config.multi_pity_size,
-            "multi_pity_progress": 0,
             "exchange_threshold": self.config.exchange_threshold,
             "exchange_progress": 0,
             "description": self.config.description,

@@ -201,12 +201,7 @@ class ChartWidget(QWidget):
 
     def _add_rate_curve_chart(self, game, pool_type, records, color):
         """保底概率曲线"""
-        from core.models import get_mechanic_type
-        pool_name = records[0].pool_name if records else ""
-        mechanic_type = get_mechanic_type(game, pool_type, pool_name)
-        config = BANNER_CONFIGS.get((game, mechanic_type))
-        if not config:
-            config = BANNER_CONFIGS.get((game, pool_type))
+        config = BANNER_CONFIGS.get((game, pool_type))
         if not config:
             return
 
@@ -321,10 +316,6 @@ class ChartWidget(QWidget):
 
     def _add_featured_chart(self, records, color, game=""):
         """50/50统计饼图"""
-        # 明日方舟没有50/50机制，不显示此图表
-        if game == "arknights":
-            return
-
         max_rarity = get_max_rarity(game) if game else 5
         five_stars = [r for r in records if r.rarity == max_rarity]
         if not five_stars:

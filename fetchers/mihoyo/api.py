@@ -11,9 +11,12 @@
 """米哈游通用 API 调用"""
 
 # ---------- 标准库导入 ----------
+import logging
 import requests  # 用于发送HTTP GET/POST请求到米哈游API服务器
 from typing import List, Dict, Optional  # 类型注解: List=列表, Dict=字典, Optional=可选类型
 from urllib.parse import urlparse, parse_qs  # 用于URL解析: urlparse解析URL各部分, parse_qs解析查询参数
+
+logger = logging.getLogger(__name__)
 
 # ---------- 项目内部模块导入 ----------
 from core.models import GachaRecord  # 统一的抽卡记录数据模型
@@ -302,12 +305,15 @@ class MihoyoAPI:
                 # ----- 网络异常处理 -----
                 except requests.exceptions.Timeout:
                     # HTTP请求超时(30秒内未收到响应)
+                    logger.error("米哈游API请求超时")
                     raise APIError("网络请求超时，请检查网络连接后重试")
                 except requests.exceptions.ConnectionError:
                     # 无法建立网络连接(如DNS解析失败、服务器不可达)
+                    logger.error("米哈游API连接失败")
                     raise APIError("网络连接失败，请检查网络连接后重试")
                 except requests.exceptions.RequestException as e:
                     # 其他网络相关异常(如SSL证书错误、重定向过多等)
+                    logger.error("米哈游API请求失败: %s", e)
                     raise APIError(f"网络请求失败: {str(e)}")
 
             # ----- 当前卡池处理完毕，进入下一个 -----
@@ -409,28 +415,6 @@ class MihoyoAPI:
                 "玻色星仪",  # 3.0版本新增常驻5星武器
             ],
         },
-        "endfield": {
-            # 明日方舟: 终末地 (Endfield) 的常驻5星角色和武器
-            "character": [
-                "骏卫",     # 常驻5星角色
-                "余烬",     # 常驻5星角色
-                "艾尔黛拉", # 常驻5星角色
-                "别礼",     # 常驻5星角色
-                "黎风",     # 常驻5星角色
-            ],
-            "weapon": [
-                # 单手剑类常驻5星武器
-                "热熔切割器", "不知归", "宏愿", "显赫声名", "扶摇", "白夜新星", "光荣记忆", "黯色火炬",
-                # 双手剑类常驻5星武器
-                "破碎君王", "大雷斑", "昔日精品", "赫拉芬格", "典范",
-                # 长柄武器类常驻5星武器
-                "负山", "骁勇", "J.E.T.",
-                # 手铳类常驻5星武器
-                "同类相食", "楔子", "望乡", "领航者",
-                # 施术单元类常驻5星武器
-                "爆破单元", "沧溟星梦", "骑士精神", "遗忘", "悼亡诗",
-            ],
-        },
     }
 
     # ==================== 可歪5星角色列表(含加入时间) ====================
@@ -461,47 +445,6 @@ class MihoyoAPI:
             "银狼": "2026-04-22",
             # 银狼 (Silver Wolf) 于2026年4月22日版本更新后加入可歪池
         },
-    }
-
-    # ==================== 明日方舟限定角色列表 ====================
-    # 明日方舟的卡池机制: 限定角色只在限定池出现，非限定角色在常驻池也可获取
-    # 用于判断抽到的6星干员是否为限定(UP)角色
-    ARKNIGHTS_LIMITED = {
-        # ---------- 限定干员 ----------
-        "年",                  # 年 (Nian) - 联动限定
-        "W",                   # W - 限定干员
-        "迷迭香",              # 迷迭香 (Rosmontis) - 限定干员
-        "夕",                  # 夕 (Dusk) - 限定干员
-        "浊心斯卡蒂",          # 浊心斯卡蒂 (Skadi the Corrupting Heart) - 限定干员
-        "假日威龙陈",          # 假日威龙陈 (Ch'en the Holungday) - 限定干员
-        "耀骑士临光",          # 耀骑士临光 (Nearl the Radiant Knight) - 限定干员
-        "令",                  # 令 (Ling) - 限定干员
-        "归溟幽灵鲨",          # 归溟幽灵鲨 (Specter the Unchained) - 限定干员
-        "百炼嘉维尔",          # 百炼嘉维尔 (Gavial the Invincible) - 限定干员
-        "缄默德克萨斯",        # 缄默德克萨斯 (Texas the Omertosa) - 限定干员
-        "重岳",                # 重岳 (Chongyue) - 限定干员
-        "缪尔赛思",            # 缪尔赛思 (Muelsyse) - 限定干员
-        "纯烬艾雅法拉",        # 纯烬 Eyjafjalla - 限定干员
-        "塑心",                # 塑心 (Virtuosa) - 限定干员
-        "黍",                  # 黍 (Shu) - 限定干员
-        "维什戴尔",            # 维什戴尔 (Wis'adel) - 限定干员
-        "佩佩",                # 佩佩 (Pepe) - 限定干员
-        "荒芜拉普兰德",        # 荒芜拉普兰德 (Lappland the Darlington) - 限定干员
-        "余",                  # 余 - 限定干员
-        "新约能天使",          # 新约能天使 (Exusiai the New Covenant) - 限定干员
-        "斩业星熊",            # 斩业星熊 (Hoshiguma the Progressive) - 限定干员
-        "凛御银灰",            # 凛御银灰 (SilverAsh the Great Chief) - 限定干员
-        "望",                  # 望 - 限定干员
-        "凯尔希·思衡托",       # 凯尔希·思衡托 - 限定干员
-
-        # ---------- 联动限定干员 ----------
-        "灰烬",       # 彩虹六号联动: Ash (灰烬)
-        "导火索",     # 彩虹六号联动: Blitz (导火索)
-        "麒麟X夜刀",  # 怪物猎人联动: Kirin X Yato
-        "焰狐龙梓兰", # 怪物猎人联动: Rathalos Zinogre
-        "0",          # 联动干员
-        "莱欧斯",     # 迷宫饭联动: Senshi (莱欧斯)
-        "丰川祥子",   # BanG Dream联动: Toyokawa Sakiko
     }
 
     # ==================== 静态方法: 记录解析 ====================
@@ -574,27 +517,20 @@ class MihoyoAPI:
 
         # ----- 第六步: 判断是否为UP物品 -----
         from core.models import get_max_rarity
-        # 导入获取游戏最高稀有度的函数(如原神=5, 方舟=6)
+        # 导入获取游戏最高稀有度的函数
 
         is_featured = False  # 是否为UP(限定)物品，默认为False(非UP)
-        if rarity == get_max_rarity(game) and pool_type in ["character", "weapon"]:
-            # 只有当抽到的是最高稀有度的 角色或武器 时才需要判断是否为UP
-            # 低稀有度物品不存在UP的概念
-
-            standard_items = MihoyoAPI.STANDARD_5STAR.get(game, {}).get(pool_type, [])
-            # 获取该游戏该卡池类型的常驻5星物品列表
-
-            limited_items = getattr(MihoyoAPI, 'ARKNIGHTS_LIMITED', set())
-            # 获取明日方舟限定角色列表(其他游戏不使用)
-
-            if game == "arknights":
-                # ----- 明日方舟特殊逻辑 -----
-                # 方舟的限定角色只在限定池出现，抽到即为UP
-                # 通过检查是否在 ARKNIGHTS_LIMITED 集合中判断
-                is_featured = item_name in limited_items
+        if rarity == get_max_rarity(game):
+            # 对于所有卡池，都判断是否为UP
+            if pool_type in ["standard", "beginner"]:
+                # 常驻池和新手池没有UP机制，直接判定为非UP
+                is_featured = False
             else:
-                # ----- 其他米哈游游戏通用逻辑 -----
-                # 首先检查是否为可歪角色(有时间限制的往期UP角色)
+                # 限定池、武器池、联动池需要判断是否为UP
+                standard_items = MihoyoAPI.STANDARD_5STAR.get(game, {}).get(pool_type, [])
+                # 获取该游戏该卡池类型的常驻5星物品列表
+
+                # 检查是否为可歪角色(有时间限制的往期UP角色)
                 loseable_info = MihoyoAPI.LOSEABLE_5STAR_WITH_DATE.get((game, pool_type), {})
                 if item_name in loseable_info:
                     # 该角色在可歪列表中，需要根据抽卡时间判断是否为UP

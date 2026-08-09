@@ -403,14 +403,11 @@ class ManualAddWidget(QWidget):
         self.type_combo.addItems(item_types)
         self.type_combo.blockSignals(False)
 
-        # 更新星级下拉框（明日方舟/终末地固定上限6星）
+        # 更新星级下拉框
         self.rarity_combo.blockSignals(True)
         self.rarity_combo.clear()
         self.rarity_combo._colors.clear()
-        if game in ("arknights", "endfield"):
-            max_rarity = 6
-        else:
-            max_rarity = MAX_RARITY.get(game, 5)
+        max_rarity = MAX_RARITY.get(game, 5)
         star_colors = {3: "#888888", 4: "#9B59B6", 5: "#FFD700", 6: "#FF6B35"}
         for r in range(max_rarity, 2, -1):
             stars = "★" * r
@@ -460,8 +457,6 @@ class ManualAddWidget(QWidget):
             "starrail": ["角色", "光锥"],
             "zzz": ["角色", "音擎"],
             "wutheringwaves": ["角色", "武器"],
-            "endfield": ["角色", "武器"],
-            "arknights": ["角色"],
         }
         return type_map.get(game, ["角色", "武器"])
 

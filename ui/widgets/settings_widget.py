@@ -1,7 +1,10 @@
 """设置页面"""
 
+import logging
 import os
 import json
+
+logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QLineEdit, QFileDialog, QMessageBox,
@@ -108,12 +111,6 @@ class SettingsWidget(QWidget):
         recalc_btn.clicked.connect(self._recalculate_pity)
         btn_row2.addWidget(recalc_btn)
 
-        update_pool_btn = QPushButton("更新卡池分类")
-        update_pool_btn.setStyleSheet("background-color: #666;")
-        update_pool_btn.setToolTip("更新明日方舟卡池分类（修复联动卡池被错误分类的问题）")
-        update_pool_btn.clicked.connect(self._update_arknights_pool_types)
-        btn_row2.addWidget(update_pool_btn)
-
         btn_row2.addStretch()
         data_layout.addLayout(btn_row2)
 
@@ -125,22 +122,14 @@ class SettingsWidget(QWidget):
         path_layout = QFormLayout(path_group)
 
         self.path_inputs = {}
-        # 不使用缓存路径的游戏（使用日志文件获取 token）
-        no_cache_games = ["endfield", "arknights"]
         for game_id, name in GAME_NAMES.items():
-            if game_id in no_cache_games:
-                # 终末地和明日方舟显示提示信息
-                hint_label = QLabel("该游戏使用登录方式获取，无需配置缓存路径")
-                hint_label.setStyleSheet("color: #888; font-style: italic;")
-                path_layout.addRow(f"{name}:", hint_label)
-            else:
-                path_input = QLineEdit()
-                path_input.setPlaceholderText(f"默认路径（留空使用默认）")
-                path_input.setMinimumWidth(400)
-                current = self.config.get(f"cache_paths.{game_id}.cn", "")
-                path_input.setText(current)
-                self.path_inputs[game_id] = path_input
-                path_layout.addRow(f"{name}:", path_input)
+            path_input = QLineEdit()
+            path_input.setPlaceholderText(f"默认路径（留空使用默认）")
+            path_input.setMinimumWidth(400)
+            current = self.config.get(f"cache_paths.{game_id}.cn", "")
+            path_input.setText(current)
+            self.path_inputs[game_id] = path_input
+            path_layout.addRow(f"{name}:", path_input)
 
         save_path_btn = QPushButton("保存路径配置")
         save_path_btn.setFixedSize(140, 32)
@@ -153,8 +142,8 @@ class SettingsWidget(QWidget):
         about_group = QGroupBox("关于")
         about_group.setStyleSheet(GROUPBOX_STYLE)
         about_layout = QVBoxLayout(about_group)
-        about_layout.addWidget(QLabel("穷观阵 v1.1.2"))
-        about_layout.addWidget(QLabel("支持游戏: 原神、星穹铁道、绝区零、鸣潮、终末地、明日方舟"))
+        about_layout.addWidget(QLabel("穷观阵 v1.2.0"))
+        about_layout.addWidget(QLabel("支持游戏: 原神、星穹铁道、绝区零、鸣潮"))
         about_layout.addWidget(QLabel("数据完全离线存储，不会上传到任何服务器"))
         main_layout.addWidget(about_group)
 
@@ -213,6 +202,7 @@ class SettingsWidget(QWidget):
             path = self.db.backup()
             QMessageBox.information(self, "备份成功", f"数据库已备份到:\n{path}")
         except Exception as e:
+            logger.error("数据库备份失败: %s", e)
             QMessageBox.critical(self, "备份失败", str(e))
 
     def _restore(self):
@@ -234,6 +224,7 @@ class SettingsWidget(QWidget):
                 QMessageBox.information(self, "恢复成功", "数据已恢复")
                 self.main_window.refresh_all()
             except Exception as e:
+                logger.error("数据库恢复失败: %s", e)
                 QMessageBox.critical(self, "恢复失败", str(e))
 
     def _clear_data(self):
@@ -338,74 +329,3 @@ class SettingsWidget(QWidget):
 
         QMessageBox.information(self, "完成", f"已重新计算 {len(accounts)} 个账号的保底数")
         self.main_window.refresh_all()
-
-    def _update_arknights_pool_types(self):
-        """更新明日方舟卡池分类（修复联动卡池被错误分类的问题）"""
-        import ast
-
-        reply = QMessageBox.question(
-            self, "确认更新",
-            "这将根据 poolId 更新明日方舟的卡池分类。\n"
-            "主要修复联动卡池（如幽境狩人）被错误分类为标准寻访的问题。\n\n"
-            "确定继续吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        updated = self._do_update_arknights_pool_types()
-
-        QMessageBox.information(self, "完成", f"已更新 {updated} 条记录的卡池分类")
-        self.main_window.refresh_all()
-
-    def _do_update_arknights_pool_types(self):
-        """执行更新明日方舟卡池分类"""
-        import ast
-
-        conn = self.db._ensure_conn()
-        rows = conn.execute(
-            "SELECT id, pool_name, raw_data FROM gacha_records WHERE game='arknights'"
-        ).fetchall()
-
-        updated = 0
-        for row in rows:
-            record_id = row["id"]
-            pool_name = row["pool_name"]
-            raw_data = row["raw_data"]
-
-            if not raw_data:
-                continue
-
-            try:
-                raw = ast.literal_eval(raw_data)
-                pool_id = raw.get("poolId", "")
-            except Exception:
-                continue
-
-            # 根据 poolId 前缀判断卡池类型
-            new_pool_type = None
-            if pool_id:
-                pool_id_upper = pool_id.upper()
-                if pool_id_upper.startswith("LIMITED_"):
-                    new_pool_type = "limited"
-                elif pool_id_upper.startswith("LINKAGE_"):
-                    new_pool_type = "limited"
-                elif pool_id_upper.startswith("CLASSIC_"):
-                    new_pool_type = "kernel"
-                else:
-                    new_pool_type = "standard"
-
-            if new_pool_type:
-                conn.execute(
-                    "UPDATE gacha_records SET pool_type=? WHERE id=?",
-                    (new_pool_type, record_id)
-                )
-                updated += 1
-
-        conn.commit()
-
-        # 重新计算保底数
-        for account in self.db.get_accounts("arknights"):
-            self.db.calculate_pity_counts(account.id)
-
-        return updated

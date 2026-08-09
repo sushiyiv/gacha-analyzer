@@ -1,8 +1,11 @@
 """数据导入页面"""
 
 import json
+import logging
 import os
 import csv
+
+logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QLineEdit, QTextEdit, QFileDialog, QMessageBox,
@@ -54,6 +57,7 @@ class FetchThread(QThread):
             if self._cancelled:
                 self.error.emit("用户已取消获取")
             else:
+                logger.exception("获取抽卡记录失败")
                 self.error.emit(str(e))
 
 
@@ -95,8 +99,6 @@ class ImportWidget(QWidget):
             ("starrail", "星穹铁道"),
             ("zzz", "绝区零"),
             ("wutheringwaves", "鸣潮"),
-            ("endfield", "终末地"),
-            ("arknights", "明日方舟"),
         ]
         for gid, gname in self._auto_game_options:
             self.auto_game_combo.addItem(gname, gid)
@@ -135,18 +137,6 @@ class ImportWidget(QWidget):
         url_desc.setStyleSheet("color: #666;")
         url_layout.addWidget(url_desc)
 
-        self._endfield_hint = QLabel(
-            "终末地：粘贴鹰角账号Token（点击下方登录获取按钮进行获取）"
-        )
-        self._endfield_hint.setStyleSheet("color: #666;")
-        url_layout.addWidget(self._endfield_hint)
-
-        self._arknights_hint = QLabel(
-            "明日方舟：粘贴鹰角账号Token（点击下方登录获取按钮进行获取）"
-        )
-        self._arknights_hint.setStyleSheet("color: #666;")
-        url_layout.addWidget(self._arknights_hint)
-
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("粘贴抽卡记录URL")
         url_layout.addWidget(self.url_input)
@@ -163,18 +153,6 @@ class ImportWidget(QWidget):
         paste_btn.setStyleSheet("background-color: #666;")
         paste_btn.clicked.connect(self._paste_from_clipboard)
         url_btn_layout.addWidget(paste_btn)
-
-        self.login_btn = QPushButton("登录获取")
-        self.login_btn.setFixedSize(120, 36)
-        self.login_btn.setStyleSheet("background-color: #E65100;")
-        self.login_btn.setToolTip("登录鹰角账号获取Token（仅终末地和明日方舟）")
-        self.login_btn.clicked.connect(self._login_fetch)
-        url_btn_layout.addWidget(self.login_btn)
-
-        # 连接游戏选择下拉框信号，控制登录按钮显示
-        self.auto_game_combo.currentIndexChanged.connect(self._update_login_btn_visibility)
-        # 初始化登录按钮显示状态
-        self._update_login_btn_visibility()
 
         url_btn_layout.addStretch()
         url_layout.addLayout(url_btn_layout)
@@ -273,12 +251,6 @@ class ImportWidget(QWidget):
             QMessageBox.information(self, "提示", "请先选择一个具体的游戏")
             return
 
-        # 终末地和明日方舟不支持缓存URL提取
-        if game_id in ("endfield", "arknights"):
-            QMessageBox.information(self, "提示",
-                f"{GAME_NAMES.get(game_id, game_id)}不支持从缓存提取URL，\n请使用方式二登录获取。")
-            return
-
         self._log(f"正在提取 {GAME_NAMES.get(game_id, game_id)} 的URL...")
         try:
             # 鸣潮需要专用的日志解密
@@ -291,11 +263,13 @@ class ImportWidget(QWidget):
                 cache = CacheReader()
                 url = cache.extract_url(game_id)
         except Exception as e:
+            logger.error("提取URL失败: %s", e)
             self._log(f"提取失败: {e}")
             QMessageBox.warning(self, "错误", f"提取URL失败:\n{e}")
             return
 
         if not url:
+            logger.warning("提取URL失败，未找到抽卡记录URL")
             self._log("未找到URL")
             QMessageBox.information(self, "提示",
                 "未找到抽卡记录URL。\n\n"
@@ -321,31 +295,9 @@ class ImportWidget(QWidget):
 
         selected_id = self.auto_game_combo.currentData()
         if selected_id == "all":
-            selected = ["genshin", "starrail", "zzz", "wutheringwaves", "endfield", "arknights"]
+            selected = ["genshin", "starrail", "zzz", "wutheringwaves"]
         else:
             selected = [selected_id]
-
-        # 检查是否选择了不支持自动获取的游戏
-        unsupported_games = []
-        supported_games = []
-        for game_id in selected:
-            if game_id in ["endfield", "arknights"]:
-                unsupported_games.append(GAME_NAMES.get(game_id, game_id))
-            else:
-                supported_games.append(game_id)
-
-        # 如果有不支持的游戏，弹窗提示
-        if unsupported_games:
-            game_names = "、".join(unsupported_games)
-            QMessageBox.warning(
-                self, "提示",
-                f"{game_names}暂时不支持自动获取，\n请使用方法二登录获取。"
-            )
-            # 如果只有不支持的游戏，则返回
-            if not supported_games:
-                return
-            # 如果混合了支持和不支持的游戏，只继续获取支持的游戏
-            selected = supported_games
 
         self._set_fetching(True)
         game_label = self.auto_game_combo.currentText()
@@ -367,9 +319,11 @@ class ImportWidget(QWidget):
                 if url:
                     detected_games.append((game_id, url))
             except Exception as e:
+                logger.error("扫描 %s 失败: %s", GAME_NAMES.get(game_id, game_id), e)
                 self._log(f"  ✗ 扫描 {GAME_NAMES.get(game_id, game_id)} 失败: {str(e)}")
 
         if not detected_games:
+            logger.warning("自动扫描未找到任何游戏记录")
             self._log("\n未找到任何游戏记录！")
             self._log("请确保：")
             self._log("1. 已打开游戏")
@@ -444,7 +398,7 @@ class ImportWidget(QWidget):
         """生成唯一昵称：游戏称呼+UID后三位，重复则加位数"""
         game_titles = {
             "genshin": "旅行者", "starrail": "开拓者", "zzz": "绳匠",
-            "wutheringwaves": "漂泊者", "endfield": "管理员", "arknights": "博士",
+            "wutheringwaves": "漂泊者",
         }
         title = game_titles.get(game, "玩家")
         existing = {a.nickname for a in self.db.get_accounts(game)}
@@ -477,7 +431,7 @@ class ImportWidget(QWidget):
         params = parsed.get("params", {})
         uid = params.get("uid") or params.get("user_id") or params.get("player_id")
 
-        # 使用预先检测到的UID（明日方舟/终末地）
+        # 使用预先检测到的UID
         if not uid and detected_uid:
             uid = detected_uid
 
@@ -502,32 +456,7 @@ class ImportWidget(QWidget):
                 self._log(f"  使用已有账号: {acc.nickname or acc.uid}")
                 return acc
 
-        # 如果没有UID，且是明日方舟/终末地，让用户手动输入
-        if not uid and game in ["arknights", "endfield"]:
-            if accounts:
-                # 询问用户是使用已有账号还是输入新UID
-                reply = QMessageBox.question(
-                    self, "选择账号",
-                    f"检测到已有{GAME_NAMES.get(game, game)}账号：\n"
-                    f"  {accounts[0].nickname or accounts[0].uid}\n\n"
-                    "是否使用该账号？\n"
-                    "（选择\"否\"可以输入新的账号UID）",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    self._log(f"  使用已有账号: {accounts[0].nickname or accounts[0].uid}")
-                    return accounts[0]
-
-            # 让用户输入UID
-            uid, ok = QInputDialog.getText(
-                self, "输入账号UID",
-                f"请输入{GAME_NAMES.get(game, game)}的账号UID："
-            )
-            if not ok or not uid.strip():
-                return None
-            uid = uid.strip()
-
-        # 如果还是没有UID，复用该游戏的第一个已有账号
+        # 如果没有UID，复用该游戏的第一个已有账号
         if not uid and accounts:
             self._log(f"  复用已有账号: {accounts[0].nickname or accounts[0].uid}")
             return accounts[0]
@@ -590,14 +519,10 @@ class ImportWidget(QWidget):
                         self._log("  正在计算保底数...")
                         self.db.calculate_pity_counts(account.id)
                         self._log("  保底数计算完成")
-                        # 明日方舟自动更新卡池分类
-                        if account.game == "arknights":
-                            updated = self.main_window.settings_page._do_update_arknights_pool_types()
-                            if updated > 0:
-                                self._log(f"  已自动更新 {updated} 条卡池分类")
                     if skipped_count > 0:
                         self._log(f"  跳过 {skipped_count} 条重复记录")
         except Exception as e:
+            logger.error("处理记录时出错: %s", e)
             self._log(f"  ✗ 处理记录时出错: {e}")
 
         # 继续获取下一个游戏
@@ -606,6 +531,7 @@ class ImportWidget(QWidget):
 
     def _on_game_fetch_error(self, error_msg):
         """单个游戏获取失败"""
+        logger.error("获取失败: %s", error_msg)
         self._log(f"  ✗ 获取失败: {error_msg}")
         if "取消" in error_msg:
             self._set_fetching(False)
@@ -631,27 +557,14 @@ class ImportWidget(QWidget):
         parsed = URLParser.parse(url)
         game = parsed.get("game", "")
 
-        # 终末地/明日方舟特殊处理：如果不是URL，且当前游戏是endfield/arknights，当作账号token
-        if not game and not url.startswith("http"):
-            current = self.main_window.get_current_game()
-            if current in ["endfield", "arknights"]:
-                game = current
-
         if not game:
             game = self.main_window.get_current_game()
             self._log(f"无法自动识别游戏，使用当前游戏: {GAME_NAMES.get(game, game)}")
         else:
             self._log(f"自动识别游戏: {GAME_NAMES.get(game, game)}")
 
-        # 对于明日方舟和终末地，先通过token获取UID
-        uid = None
-        if game in ["arknights", "endfield"] and not url.startswith("http"):
-            uid = self._get_uid_from_token(game, url)
-            if uid:
-                self._log(f"  从Token检测到UID: {uid}")
-
         # 自动创建或获取账号
-        account = self._auto_detect_account(game, url, uid)
+        account = self._auto_detect_account(game, url)
         if not account:
             return
 
@@ -733,11 +646,6 @@ class ImportWidget(QWidget):
                 self._log("正在计算保底数...")
                 self.db.calculate_pity_counts(account.id)
                 self._log("保底数计算完成")
-                # 明日方舟自动更新卡池分类
-                if account.game == "arknights":
-                    updated = self.main_window.settings_page._do_update_arknights_pool_types()
-                    if updated > 0:
-                        self._log(f"已自动更新 {updated} 条卡池分类")
             if skipped_count > 0:
                 self._log(f"跳过 {skipped_count} 条重复记录")
 
@@ -775,56 +683,12 @@ class ImportWidget(QWidget):
                     proc = getattr(fetcher, '_proxy_proc', None)
                     if proc and proc.poll() is None:
                         proc.kill()
-            except Exception:
+            except Exception as e:
+                logger.debug("清理代理进程失败: %s", e)
                 pass
             self.cancel_btn.setEnabled(False)
             self.cancel_btn.setText("取消中...")
             self._log("正在取消获取...")
-
-    def _get_uid_from_token(self, game: str, token: str) -> str:
-        """通过token获取UID（仅明日方舟和终末地）"""
-        try:
-            import requests as req
-
-            self._log(f"  正在从Token获取UID... (Token长度: {len(token)})")
-
-            # 短 token（< 50字符）是鹰角账号 token，需要交换
-            if len(token) < 50:
-                self._log(f"  检测到鹰角账号Token，正在交换...")
-                # 1. hg_token -> app_token
-                grant_resp = req.post(
-                    "https://as.hypergryph.com/user/oauth2/v2/grant",
-                    json={"type": 1, "appCode": "be36d44aa36bfb5b", "token": token},
-                    timeout=15,
-                )
-                grant_data = grant_resp.json()
-                app_token = grant_data.get("data", {}).get("token")
-                if not app_token:
-                    self._log(f"  ✗ 获取app_token失败: {grant_data.get('msg', '未知错误')}")
-                    return None
-
-                # 2. app_token -> 绑定列表 -> UID
-                binding_resp = req.get(
-                    "https://binding-api-account-prod.hypergryph.com/account/binding/v1/binding_list",
-                    params={"token": app_token, "appCode": game},
-                    timeout=15,
-                )
-                binding_data = binding_resp.json()
-                apps = binding_data.get("data", {}).get("list", [])
-
-                for app in apps:
-                    if app.get("appCode") == game:
-                        for binding in app.get("bindingList", []):
-                            uid = binding.get("uid", "")
-                            if uid:
-                                self._log(f"  ✓ 获取到UID: {uid}")
-                                return str(uid)
-                self._log(f"  ✗ 未找到{game}的绑定角色")
-            else:
-                self._log(f"  Token是u8_token（长token），无法直接获取UID")
-        except Exception as e:
-            self._log(f"  ✗ 获取UID失败: {str(e)}")
-        return None
 
     def _set_fetching(self, fetching):
         self.auto_fetch_btn.setEnabled(not fetching)
@@ -881,79 +745,14 @@ class ImportWidget(QWidget):
             self._log(f"✓ URL已导出到: {filepath}")
             QMessageBox.information(self, "导出成功", f"URL已导出到:\n{filepath}")
         except Exception as e:
+            logger.error("导出URL失败: %s", e)
             self._log(f"✗ 导出失败: {str(e)}")
             QMessageBox.critical(self, "导出失败", f"导出失败:\n{str(e)}")
-
-    def _update_login_btn_visibility(self):
-        """根据选择的游戏更新登录按钮的显示状态"""
-        selected_id = self.auto_game_combo.currentData()
-        # 只有选择终末地、明日方舟或全部游戏时才显示登录按钮
-        show_login = selected_id in ["all", "endfield", "arknights"]
-        self.login_btn.setVisible(show_login)
-        # 终末地/明日方舟专用说明仅在对应游戏时显示
-        self._endfield_hint.setVisible(selected_id == "endfield")
-        self._arknights_hint.setVisible(selected_id == "arknights")
-        # 输入框占位文字跟随游戏切换
-        if selected_id in ("endfield", "arknights"):
-            self.url_input.setPlaceholderText("粘贴鹰角账号Token")
-        else:
-            self.url_input.setPlaceholderText("粘贴抽卡记录URL")
 
     def _paste_from_clipboard(self):
         from PySide6.QtWidgets import QApplication
         clipboard = QApplication.clipboard()
         self.url_input.setText(clipboard.text())
-
-    def _login_fetch(self):
-        """登录获取 - 根据当前游戏打开对应登录窗口"""
-        game = self.main_window.get_current_game()
-
-        if game == "endfield":
-            self._login_endfield()
-        elif game == "arknights":
-            self._login_arknights()
-        else:
-            QMessageBox.information(self, "提示", "登录获取仅支持终末地和明日方舟。")
-
-    def _login_endfield(self):
-        """终末地登录 - API版"""
-        try:
-            from ui.widgets.login_dialog_api import LoginApiDialog
-
-            dialog = LoginApiDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                token = dialog.get_framework_token()
-                if token:
-                    self.url_input.setText(token)
-                    self._log(f"✓ 终末地登录成功，Token: {token[:20]}...")
-                    QTimer.singleShot(100, self._url_fetch)
-                else:
-                    self._log("✗ 未获取到凭证")
-                    QMessageBox.warning(self, "提示", "未获取到凭证")
-            else:
-                self._log("登录已取消")
-        except Exception as e:
-            self._log(f"✗ 登录出错: {type(e).__name__}: {str(e)}")
-
-    def _login_arknights(self):
-        """明日方舟登录 - API版"""
-        try:
-            from ui.widgets.arknights_login_api import ArknightsLoginApiDialog
-
-            dialog = ArknightsLoginApiDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                token = dialog.get_token()
-                if token:
-                    self.url_input.setText(token)
-                    self._log(f"✓ 明日方舟登录成功，Token: {token[:20]}...")
-                    QTimer.singleShot(100, self._url_fetch)
-                else:
-                    self._log("✗ 未获取到 Token")
-                    QMessageBox.warning(self, "提示", "未获取到 Token，请重试。")
-            else:
-                self._log("登录已取消")
-        except Exception as e:
-            self._log(f"✗ 登录出错: {type(e).__name__}: {str(e)}")
 
     def _import_file(self, file_type):
         """文件导入"""
@@ -986,6 +785,7 @@ class ImportWidget(QWidget):
             else:
                 QMessageBox.warning(self, "提示", "文件中没有找到有效记录")
         except Exception as e:
+            logger.exception("导入文件失败")
             self._log(f"导入失败：{str(e)}")
             QMessageBox.critical(self, "导入失败", f"解析文件失败：\n{str(e)}")
 
@@ -1075,9 +875,6 @@ class ImportWidget(QWidget):
         records = []
         uid = str(data.get("info", {}).get("uid", ""))
 
-        # 小黑盒的星级和API一致（0-5），明日方舟需要+1转成1-6
-        rarity_offset = 1 if game == "arknights" else 0
-
         for ts_str, entry in data.get("data", {}).items():
             # 解析时间戳
             try:
@@ -1089,17 +886,13 @@ class ImportWidget(QWidget):
             pool_name = entry.get("p", "")
             chars = entry.get("c", [])
 
-            # 根据游戏确定 pool_type
-            if game == "arknights":
-                pool_type = self._get_arknights_pool_type(pool_name)
-            else:
-                pool_type = "character"
+            pool_type = "character"
 
             for idx, char in enumerate(chars):
                 if len(char) < 2:
                     continue
                 char_name = char[0]
-                rarity = int(char[1]) + rarity_offset
+                rarity = int(char[1])
                 is_featured = bool(char[2]) if len(char) > 2 else False
 
                 # 生成唯一 item_id: 角色名_时间（与游戏API获取格式一致，避免重复）
@@ -1177,34 +970,6 @@ class ImportWidget(QWidget):
 
         return records
 
-    def _get_arknights_pool_type(self, pool_name: str) -> str:
-        """根据明日方舟卡池名返回保底分组"""
-        from core.models import ARKNIGHTS_POOL_MECHANIC_MAP, ARKNIGHTS_MECHANIC_TO_GROUP
-
-        # 精确匹配
-        mechanic = ARKNIGHTS_POOL_MECHANIC_MAP.get(pool_name, "")
-        if mechanic:
-            return ARKNIGHTS_MECHANIC_TO_GROUP.get(mechanic, "standard")
-
-        # 关键词匹配
-        limited_keywords = ["限定", "联动", "跨年", "归航", "启程", "承诺"]
-        kernel_keywords = ["中坚"]
-        standard_keywords = ["标准", "常驻", "定向", "甄选"]
-
-        for kw in limited_keywords:
-            if kw in pool_name:
-                return "limited"
-        for kw in kernel_keywords:
-            if kw in pool_name:
-                return "kernel"
-        for kw in standard_keywords:
-            if kw in pool_name:
-                return "standard"
-
-        # 未识别的限时卡池默认为独立寻访（limited）
-        # 因为大多数特定角色卡池都是限定池
-        return "limited"
-
     def _ensure_account(self, game):
         """确保有账号，没有则创建"""
         from PySide6.QtWidgets import QInputDialog
@@ -1230,7 +995,7 @@ class ImportWidget(QWidget):
         order = getattr(self.main_window, '_game_order', [])
         all_games = [
             ("genshin", "原神"), ("starrail", "星穹铁道"), ("zzz", "绝区零"),
-            ("wutheringwaves", "鸣潮"), ("endfield", "终末地"), ("arknights", "明日方舟"),
+            ("wutheringwaves", "鸣潮"),
         ]
 
         # 按左侧顺序筛选可见游戏

@@ -134,7 +134,6 @@ class URLParser:
         - 星铁: URL包含 "hkrpg" 或 game_biz 包含 "starrail"
         - 绝区零: URL包含 "nap" 或 game_biz 包含 "zzz"
         - 鸣潮: 主机名包含 "kuro" 或 "aki-game" 或URL包含 "wutheringwaves"
-        - 终末地: URL包含 "ef-webview" 或 "endfield"
 
         参数:
             url (str): 完整URL字符串
@@ -171,17 +170,6 @@ class URLParser:
             # aki-game = 库洛游戏的服务器域名
             # wutheringwaves = 鸣潮的英文名
             return "wutheringwaves"
-
-        elif "ef-webview" in url or "endfield" in url.lower():
-            # ef-webview = 终末地的WebView标识
-            # endfield = 终末地的英文名
-            return "endfield"
-
-        elif "hypergryph" in url.lower() and "endfield" not in url.lower():
-            # hypergryph = 鹰角网络(明日方舟开发商)
-            # 如果包含hypergryph但不包含endfield，可能是明日方舟
-            # 但明日方舟的获取器可能不使用URL方式，暂返回空字符串
-            return ""
 
         return ""  # 无法识别游戏类型
 

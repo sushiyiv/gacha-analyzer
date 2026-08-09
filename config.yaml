@@ -6,8 +6,6 @@ game_order:
   - starrail
   - zzz
   - wutheringwaves
-  - endfield
-  - arknights
 
 # 数据库路径
 database_path: "data/gacha_records.db"
@@ -38,12 +36,6 @@ cache_paths:
     os: "AppData/LocalLow/Cognosphere/ZZZ/output_log.txt"
   wutheringwaves:
     cn: "AppData/LocalLow/kurogame/WutheringWaves/Player.log"
-    os: ""
-  endfield:
-    cn: "AppData/LocalLow/Hypergryph/Endfield/sdklogs/HGWebview.log"
-    os: ""
-  arknights:
-    cn: "AppData/LocalLow/Hypergryph/Arknights/sdklogs/HGWebview.log"
     os: ""
 
 # 卡池类型映射
@@ -78,13 +70,3 @@ gacha_types:
     standard_character: "常驻角色唤取"
     standard_weapon: "常驻武器唤取"
     beginner: "新手唤取"
-  endfield:
-    limited: "特许寻访"
-    joint: "辉光庆典"
-    character: "基础寻访"
-    weapon: "武库申领"
-    beginner: "启程寻访"
-  arknights:
-    standard: "标准寻访"
-    kernel: "中坚寻访"
-    limited: "独立寻访"

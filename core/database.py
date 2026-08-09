@@ -228,7 +228,7 @@ class Database:
                     -- INTEGER PRIMARY KEY AUTOINCREMENT 让 SQLite 自动生成递增的整数 ID
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-                    -- game: 游戏名称标识符（如 "genshin", "starrail", "endfield"）
+                    -- game: 游戏名称标识符（如 "genshin", "starrail", "zzz"）
                     -- NOT NULL 约束确保必须提供游戏名称，不允许为空
                     game TEXT NOT NULL,
 
@@ -903,7 +903,7 @@ class Database:
 
         这是保底计数的高级接口，封装了不同游戏的保底规则差异。
         核心算法：
-          1. 根据游戏名称确定最高稀有度（如原神/星铁为5，终末地可能为6）
+          1. 根据游戏名称确定最高稀有度（原神/星铁/绝区零/鸣潮为5）
           2. 根据游戏和卡池类型构建筛选条件
           3. 找到最后一次出最高星的时间点
           4. 统计那之后的所有抽卡次数即为当前保底进度
@@ -916,19 +916,8 @@ class Database:
 
         返回值：
             int: 当前保底进度（距离上次最高星的抽数）
-
-        特殊处理（终末地 Endfield 游戏）：
-          - 终末地的武器池在卡池名称变更时会重置保底
-          - 需要额外按 pool_name 过滤
-          - 不同 pool_type 可能属于同一个保底组（共享保底计数）
-          - 保底组内非武器池的卡池轮换时保底继承
         """
-        # 从 models 模块导入游戏相关的配置常量和函数
-        # get_max_rarity: 根据游戏名称返回最高稀有度等级（如原神返回5）
-        # get_endfield_pity_group: 根据卡池类型返回终末地的保底分组名
-        # ENDFIELD_PITY_GROUP: 终末地卡池类型到保底分组的映射字典
-        # ENDFIELD_PITY_RESETS_ON_NAME_CHANGE: 需要按名称重置保底的分组集合
-        from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_GROUP, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
+        from core.models import get_max_rarity
         # 获取该游戏的最高稀有度等级，未指定游戏时默认为 5（五星）
         max_rarity = get_max_rarity(game) if game else 5
 
@@ -936,33 +925,11 @@ class Database:
         conn = self._ensure_conn()
 
         # =====================================================
-        # 根据游戏和卡池类型构建 SQL 筛选条件片段
+        # 构建 SQL 筛选条件片段
         # pool_type_filter 是 SQL 的 WHERE 子句片段，pool_type_params 是对应的参数
         # =====================================================
-        # 终末地游戏的特殊保底逻辑
-        if game == "endfield":
-            # 获取该卡池类型所属的保底分组
-            pity_group = get_endfield_pity_group(pool_type)
-            # 如果该分组属于"名称变更时重置保底"的类型（如武器池）
-            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                # 武器池：需要同时按 pool_type 和 pool_name 过滤
-                # 因为武器池在名称变更时会重置保底
-                pool_type_filter = "pool_type=? AND pool_name=?"
-                # 如果 pool_name 有值则使用它，否则使用空字符串
-                pool_type_params = [pool_type, pool_name] if pool_name else [pool_type, ""]
-            else:
-                # 非武器池：按该保底组内的所有 pool_type 过滤
-                # 同一保底组内的不同卡池轮换时保底计数继承
-                # 例如：某保底组包含 "character_up_1" 和 "character_up_2"，需要同时查两个
-                pool_types = [pt for pt, g in ENDFIELD_PITY_GROUP.items() if g == pity_group]
-                # 使用 IN 子句匹配多个 pool_type，生成对应数量的 ? 占位符
-                placeholders = ",".join("?" * len(pool_types))
-                pool_type_filter = f"pool_type IN ({placeholders})"
-                pool_type_params = pool_types
-        else:
-            # 非终末地游戏：简单的 pool_type 等值过滤
-            pool_type_filter = "pool_type=?"
-            pool_type_params = [pool_type]
+        pool_type_filter = "pool_type=?"
+        pool_type_params = [pool_type]
 
         # =====================================================
         # 当未指定 pool_name 时，自动查找该保底组下最近活跃的 pool_name
@@ -983,91 +950,32 @@ class Database:
             pool_name = latest["pool_name"]
 
         # =====================================================
-        # 根据游戏类型分别处理保底查询
-        # 终末地武器池和非终末地游戏需要额外按 pool_name 过滤
-        # 终末地非武器池则不按 pool_name 过滤（跨轮换继承保底）
+        # 按 pool_type 和 pool_name 过滤查询保底计数
         # =====================================================
-        if game == "endfield":
-            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                # ---- 终末地武器池：按 pool_name 过滤（换名字清空保底）----
-                # 第一次查询：找到最后一次出最高星的时间和 id
-                row = conn.execute(
-                    f"""SELECT time, id FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND rarity>=?
-                       ORDER BY time DESC, id DESC LIMIT 1""",
-                    [account_id] + pool_type_params + [max_rarity]
-                ).fetchone()
+        # 第一次查询：找到最后一次出最高星的时间和 id
+        row = conn.execute(
+            """SELECT time, id FROM gacha_records
+               WHERE account_id=? AND pool_type=? AND pool_name=? AND rarity>=?
+               ORDER BY time DESC, id DESC LIMIT 1""",
+            (account_id, pool_type, pool_name, max_rarity)
+        ).fetchone()
 
-                # 如果从未出过最高星（row 为 None）
-                if row is None:
-                    # 统计该卡池的所有记录数作为当前保底进度
-                    total = conn.execute(
-                        f"SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND {pool_type_filter}",
-                        [account_id] + pool_type_params
-                    ).fetchone()
-                    return total["cnt"] if total else 0
-
-                # 第二次查询：统计最后一次最高星之后的所有抽卡次数
-                count = conn.execute(
-                    f"""SELECT COUNT(*) as cnt FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND (time > ? OR (time = ? AND id > ?))""",
-                    # 参数：账号ID, 卡池筛选参数, 最近五星的时间（用于时间比较）和ID（用于同秒内区分）
-                    [account_id] + pool_type_params + [row["time"], row["time"], row["id"]]
-                ).fetchone()
-                # 返回保底计数
-                return count["cnt"] if count else 0
-            else:
-                # ---- 终末地非武器池：不按 pool_name 过滤（跨轮换继承保底）----
-                # 第一次查询：找到最后一次出最高星的时间和 id
-                row = conn.execute(
-                    f"""SELECT time, id FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND rarity>=?
-                       ORDER BY time DESC, id DESC LIMIT 1""",
-                    [account_id] + pool_type_params + [max_rarity]
-                ).fetchone()
-
-                # 如果从未出过最高星（row 为 None）
-                if row is None:
-                    total = conn.execute(
-                        f"SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND {pool_type_filter}",
-                        [account_id] + pool_type_params
-                    ).fetchone()
-                    return total["cnt"] if total else 0
-
-                # 第二次查询：统计最后一次最高星之后的所有抽卡次数
-                count = conn.execute(
-                    f"""SELECT COUNT(*) as cnt FROM gacha_records
-                       WHERE account_id=? AND {pool_type_filter} AND (time > ? OR (time = ? AND id > ?))""",
-                    [account_id] + pool_type_params + [row["time"], row["time"], row["id"]]
-                ).fetchone()
-                return count["cnt"] if count else 0
-        else:
-            # ---- 非终末地游戏（如原神、星铁等）：同时按 pool_type 和 pool_name 过滤 ----
-            # 第一次查询：找到最后一次出最高星的时间和 id
-            row = conn.execute(
-                """SELECT time, id FROM gacha_records
-                   WHERE account_id=? AND pool_type=? AND pool_name=? AND rarity>=?
-                   ORDER BY time DESC, id DESC LIMIT 1""",
-                (account_id, pool_type, pool_name, max_rarity)
+        # 如果从未出过最高星（row 为 None）
+        if row is None:
+            # 统计该卡池的所有记录数作为当前保底进度
+            total = conn.execute(
+                "SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND pool_type=? AND pool_name=?",
+                (account_id, pool_type, pool_name)
             ).fetchone()
+            return total["cnt"] if total else 0
 
-            # 如果从未出过最高星（row 为 None）
-            if row is None:
-                # 统计该卡池的所有记录数作为当前保底进度
-                total = conn.execute(
-                    "SELECT COUNT(*) as cnt FROM gacha_records WHERE account_id=? AND pool_type=? AND pool_name=?",
-                    (account_id, pool_type, pool_name)
-                ).fetchone()
-                return total["cnt"] if total else 0
-
-            # 第二次查询：统计最后一次最高星之后的所有抽卡次数
-            # AND (time > ? OR (time = ? AND id > ?)) 条件精确筛选出"之后"的记录
-            count = conn.execute(
-                """SELECT COUNT(*) as cnt FROM gacha_records
-                   WHERE account_id=? AND pool_type=? AND pool_name=? AND (time > ? OR (time = ? AND id > ?))""",
-                (account_id, pool_type, pool_name, row["time"], row["time"], row["id"])
-            ).fetchone()
-            return count["cnt"] if count else 0
+        # 第二次查询：统计最后一次最高星之后的所有抽卡次数
+        count = conn.execute(
+            """SELECT COUNT(*) as cnt FROM gacha_records
+               WHERE account_id=? AND pool_type=? AND pool_name=? AND (time > ? OR (time = ? AND id > ?))""",
+            (account_id, pool_type, pool_name, row["time"], row["time"], row["id"])
+        ).fetchone()
+        return count["cnt"] if count else 0
 
     def calculate_pity_counts(self, account_id: int):
         """重新计算指定账号所有记录的保底计数
@@ -1094,8 +1002,7 @@ class Database:
           - 再按时间正序（从旧到新），确保保底计数按实际抽卡顺序累加
           - 相同时间按 id 正序，保证同一秒内的记录也有确定的顺序
         """
-        # 从 models 模块导入游戏相关的配置函数和常量
-        from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
+        from core.models import get_max_rarity
         # 获取数据库连接
         with self.connect() as conn:
             # 查询该账号的所有抽卡记录，只选择需要的字段以提高性能
@@ -1116,28 +1023,16 @@ class Database:
                 # 安全获取 pool_name：兼容旧版数据库可能没有此列的情况
                 pool_name = row["pool_name"] if "pool_name" in row.keys() else ""
                 rarity = row["rarity"]        # 稀有度等级
-                # 获取该游戏的最高稀有度等级（如原神返回5，终末地返回6）
+                # 获取该游戏的最高稀有度等级（如原神返回5）
                 max_rarity = get_max_rarity(game)
 
                 # =====================================================
                 # 确定保底分组键（group_key）
                 # 相同分组键的记录共享同一个保底计数器
                 # =====================================================
-                if game == "endfield":
-                    # 终末地游戏的特殊分组逻辑
-                    group = get_endfield_pity_group(pool_type)
-                    if group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                        # 武器池等：按 (游戏, 保底组, 卡池名称) 分组
-                        # 同一保底组内，不同名称的卡池独立计算保底
-                        group_key = (game, group, pool_name)
-                    else:
-                        # 角色池等：按 (游戏, 保底组) 分组
-                        # 同一保底组内的所有 pool_type 共享保底计数
-                        group_key = (game, group)
-                else:
-                    # 非终末地游戏：按 (游戏, 卡池类型, 卡池名称) 分组
-                    # 如果没有 pool_name，使用空字符串作为默认值
-                    group_key = (game, pool_type, pool_name) if pool_name else (game, pool_type, "")
+                # 按 (游戏, 卡池类型, 卡池名称) 分组
+                # 如果没有 pool_name，使用空字符串作为默认值
+                group_key = (game, pool_type, pool_name) if pool_name else (game, pool_type, "")
 
                 # 如果该分组尚未初始化，设置初始计数为 0
                 if group_key not in pity_counts:
@@ -1178,8 +1073,7 @@ class Database:
           - 最后按时间正序排列，确保按实际抽卡顺序处理
           - 这保证了每个账号的每个卡池都按正确顺序计算保底
         """
-        # 从 models 模块导入游戏相关的配置函数和常量
-        from core.models import get_max_rarity, get_endfield_pity_group, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
+        from core.models import get_max_rarity
         # 查询所有记录，按账号、卡池类型和时间排序
         rows = conn.execute(
             "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records "
@@ -1200,18 +1094,8 @@ class Database:
             # 获取最高稀有度等级
             max_rarity = get_max_rarity(game)
 
-            # 确定保底分组键（逻辑与 calculate_pity_counts 完全相同）
-            if game == "endfield":
-                group = get_endfield_pity_group(pool_type)
-                if group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                    # 武器池：按 (游戏, 保底组, 卡池名称) 分组
-                    group_key = (game, group, pool_name)
-                else:
-                    # 非武器池：按 (游戏, 保底组) 分组，跨卡池继承保底
-                    group_key = (game, group)
-            else:
-                # 非终末地游戏：按 (游戏, 卡池类型, 卡池名称) 分组
-                group_key = (game, pool_type, pool_name) if pool_name else (game, pool_type, "")
+            # 确定保底分组键：按 (游戏, 卡池类型, 卡池名称) 分组
+            group_key = (game, pool_type, pool_name) if pool_name else (game, pool_type, "")
 
             # 初始化该分组的计数器（如果尚未存在）
             if group_key not in pity_counts:

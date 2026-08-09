@@ -14,7 +14,7 @@ import shiboken6
 
 from core.database import Database
 from core.config import Config
-from core.models import BANNER_CONFIGS, get_max_rarity, get_pity_rarity, get_pool_names, get_mechanic_type
+from core.models import BANNER_CONFIGS, get_max_rarity, get_pity_rarity, get_pool_names
 
 
 class HomeWidget(QWidget):
@@ -169,55 +169,24 @@ class HomeWidget(QWidget):
         stats_layout.addStretch()
         layout.addWidget(stats_frame)
 
-        # 只有终末地武器池和明日方舟独立寻访使用卡片模式（按具体卡池名分区块）
         has_multiple_pools = False
         cards_container = None
-        current_game = self.main_window.get_current_game()
-        use_card_mode = (current_game == "endfield" and pool_type == "weapon") or \
-                        (current_game == "arknights" and pool_type == "limited")
-        if use_card_mode and pool_names_by_type and pool_type in pool_names_by_type:
-            pool_names = pool_names_by_type[pool_type]
-            if len(pool_names) >= 1:
-                has_multiple_pools = True
-                cards_scroll = QScrollArea()
-                cards_scroll.setWidgetResizable(True)
-                cards_scroll.setFrameShape(QFrame.Shape.NoFrame)
-                cards_container = QWidget()
-                cards_layout = QVBoxLayout(cards_container)
-                cards_layout.setContentsMargins(0, 0, 0, 0)
-                cards_layout.setSpacing(12)
-                cards_scroll.setWidget(cards_container)
-                layout.addWidget(cards_scroll, 1)
 
         # 出货记录表格（单 pool_name 时使用）
         table = QTableWidget()
-        current_game = self.main_window.get_current_game()
-        if current_game == "arknights":
-            table.setColumnCount(5)
-            table.setHorizontalHeaderLabels(["序号", "名称", "星级", "保底计数", "卡池"])
-            header = table.horizontalHeader()
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-            table.setColumnWidth(0, 50)
-            table.setColumnWidth(2, 110)
-            table.setColumnWidth(3, 80)
-        else:
-            table.setColumnCount(6)
-            table.setHorizontalHeaderLabels(["序号", "名称", "星级", "是否UP", "保底计数", "时间"])
-            header = table.horizontalHeader()
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-            header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-            table.setColumnWidth(0, 50)
-            table.setColumnWidth(2, 110)
-            table.setColumnWidth(3, 70)
-            table.setColumnWidth(4, 80)
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(["序号", "名称", "星级", "是否UP", "保底计数", "时间"])
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        table.setColumnWidth(0, 50)
+        table.setColumnWidth(2, 110)
+        table.setColumnWidth(3, 70)
+        table.setColumnWidth(4, 80)
 
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -308,10 +277,7 @@ class HomeWidget(QWidget):
         val_avg = _add_stat("平均出金", avg_pity, "#FF9800")
 
         # 已垫抽数
-        mechanic_type = get_mechanic_type(game, pool_type, pool_name)
-        config = BANNER_CONFIGS.get((game, mechanic_type))
-        if not config:
-            config = BANNER_CONFIGS.get((game, pool_type))
+        config = BANNER_CONFIGS.get((game, pool_type))
         if config:
             pity = self.db.get_last_5star_pity(account.id, pool_type, game, pool_name=pool_name)
             _add_stat("已垫", f"{pity}抽", "#1a73e8")
@@ -321,28 +287,17 @@ class HomeWidget(QWidget):
 
         # 记录表格
         table = QTableWidget()
-        if game == "arknights":
-            table.setColumnCount(4)
-            table.setHorizontalHeaderLabels(["序号", "名称", "星级", "时间"])
-            h = table.horizontalHeader()
-            h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-            h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-            table.setColumnWidth(0, 50)
-            table.setColumnWidth(2, 110)
-        else:
-            table.setColumnCount(5)
-            table.setHorizontalHeaderLabels(["序号", "名称", "星级", "是否UP", "时间"])
-            h = table.horizontalHeader()
-            h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-            h.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-            h.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-            table.setColumnWidth(0, 50)
-            table.setColumnWidth(2, 110)
-            table.setColumnWidth(3, 70)
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["序号", "名称", "星级", "是否UP", "时间"])
+        h = table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        h.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        table.setColumnWidth(0, 50)
+        table.setColumnWidth(2, 110)
+        table.setColumnWidth(3, 70)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.verticalHeader().setVisible(False)
@@ -367,13 +322,10 @@ class HomeWidget(QWidget):
             si = QTableWidgetItem("★" * r.rarity)
             si.setForeground(QColor(star_colors.get(r.rarity, "#FF6B35")))
             table.setItem(i, 2, si)
-            if game == "arknights":
-                table.setItem(i, 3, QTableWidgetItem(r.time[:16] if r.time else ""))
-            else:
-                ui = QTableWidgetItem("是" if r.is_featured else "否")
-                ui.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
-                table.setItem(i, 3, ui)
-                table.setItem(i, 4, QTableWidgetItem(r.time[:16] if r.time else ""))
+            ui = QTableWidgetItem("是" if r.is_featured else "否")
+            ui.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
+            table.setItem(i, 3, ui)
+            table.setItem(i, 4, QTableWidgetItem(r.time[:16] if r.time else ""))
 
         card_layout.addWidget(table)
 
@@ -477,22 +429,14 @@ class HomeWidget(QWidget):
 
         # "全部"标签页
         all_pool_types = [pt for pt, _ in ordered_pools]
-        # 明日方舟不显示UP/总金数、小保底不歪率、每UP需
-        if game == "arknights":
-            stat_keys = self._stat_simple
-        else:
-            stat_keys = self._stat_full
+        stat_keys = self._stat_full
         tab = self._create_pool_tab("全部", None, stat_keys, all_pool_types, pool_name_map, pool_names_by_type=pool_names_by_type)
         self._tabs.append(tab)
         self.pool_tabs.addTab(tab, "全部")
 
         # 各卡池标签页
         for pool_type, name in ordered_pools:
-            # 明日方舟不显示UP/总金数、小保底不歪率、每UP需
-            if game == "arknights":
-                stat_keys = self._stat_simple
-            else:
-                stat_keys = self._stat_full if pool_type in ("character", "weapon") else self._stat_simple
+            stat_keys = self._stat_full if pool_type in ("character", "weapon") else self._stat_simple
             pool_names = pool_names_by_type.get(pool_type, set())
             tab = self._create_pool_tab(name, pool_type, stat_keys, None, pool_name_map, pool_names_by_type=pool_names_by_type)
             self._tabs.append(tab)
@@ -689,11 +633,7 @@ class HomeWidget(QWidget):
     def _get_star_filter(self, game: str) -> list:
         """获取当前游戏的星级筛选设置"""
         max_rarity = get_max_rarity(game)
-        # 默认值：终末地/明日方舟显示5-6星，其他游戏显示4-5星
-        if game in ("endfield", "arknights"):
-            default = [r for r in range(5, max_rarity + 1)]
-        else:
-            default = [r for r in range(4, max_rarity + 1)]
+        default = [r for r in range(4, max_rarity + 1)]
         return self.config.get(f"star_filter.{game}", default)
 
     def _on_star_filter_clicked(self):
@@ -947,7 +887,6 @@ class HomeWidget(QWidget):
 
         # 星级颜色映射
         star_colors = {3: "#888", 4: "#9B59B6", 5: "#FFD700", 6: "#FF6B35"}
-        col_count = table.columnCount()
 
         for i, r in enumerate(filtered):
             table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
@@ -957,20 +896,14 @@ class HomeWidget(QWidget):
             star_item.setForeground(QColor(star_colors.get(r.rarity, "#FF6B35")))
             table.setItem(i, 2, star_item)
 
-            if col_count == 5:
-                # 明日方舟：序号, 名称, 星级, 保底计数, 卡池
-                table.setItem(i, 3, QTableWidgetItem(str(r.pity_count)))
-                table.setItem(i, 4, QTableWidgetItem(r.pool_name or ""))
+            up_item = QTableWidgetItem("是" if r.is_featured else "否")
+            if r.is_featured:
+                up_item.setForeground(QColor("#FF6B35"))
             else:
-                # 其他游戏：序号, 名称, 星级, 是否UP, 保底计数, 时间
-                up_item = QTableWidgetItem("是" if r.is_featured else "否")
-                if r.is_featured:
-                    up_item.setForeground(QColor("#FF6B35"))
-                else:
-                    up_item.setForeground(QColor("#4CAF50"))
-                table.setItem(i, 3, up_item)
-                table.setItem(i, 4, QTableWidgetItem(str(r.pity_count)))
-                table.setItem(i, 5, QTableWidgetItem(r.time[:16] if r.time else ""))
+                up_item.setForeground(QColor("#4CAF50"))
+            table.setItem(i, 3, up_item)
+            table.setItem(i, 4, QTableWidgetItem(str(r.pity_count)))
+            table.setItem(i, 5, QTableWidgetItem(r.time[:16] if r.time else ""))
 
     def _clear_stats(self):
         for tab in self._tabs:

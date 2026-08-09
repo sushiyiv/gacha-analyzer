@@ -31,6 +31,29 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QTimer
+
+
+def _global_excepthook(exc_type, exc_value, exc_tb):
+    """全局异常钩子 - 捕获主线程未处理的异常"""
+    logger.exception("未处理的异常")
+    # 调用默认钩子（会弹出 Python 错误对话框）
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+
+def _qt_message_handler(msg_type, context, message):
+    """Qt 消息处理器 - 捕获 Qt 内部的警告和错误"""
+    if msg_type == 0:  # QtDebugMsg
+        logger.debug("Qt: %s", message)
+    elif msg_type == 1:  # QtInfoMsg
+        logger.info("Qt: %s", message)
+    elif msg_type == 2:  # QtWarningMsg
+        logger.warning("Qt: %s", message)
+    elif msg_type == 3:  # QtCriticalMsg
+        logger.error("Qt: %s", message)
+    elif msg_type == 4:  # QtFatalMsg
+        logger.critical("Qt: %s", message)
+
+
 from PySide6.QtGui import QFont, QIcon, QPalette, QColor
 
 
@@ -70,11 +93,19 @@ from ui.main_window import MainWindow
 def main():
     logger.info("穷观阵启动中...")
 
+    # 注册全局异常钩子
+    sys.excepthook = _global_excepthook
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
     app = QApplication(sys.argv)
+
+    # 安装 Qt 消息处理器
+    from PySide6.QtCore import qInstallMessageHandler
+    qInstallMessageHandler(_qt_message_handler)
+
     _force_light_palette(app)
 
     # 获取图标路径
@@ -86,7 +117,7 @@ def main():
     app.setFont(font)
 
     app.setApplicationName("穷观阵")
-    app.setApplicationVersion("1.1.2")
+    app.setApplicationVersion("1.2.0")
     app.setOrganizationName("QianGuanZhen")
 
     window = MainWindow()

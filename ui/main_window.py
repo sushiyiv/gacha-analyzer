@@ -33,8 +33,6 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._load_style()
 
-        self._auto_update_arknights_pools()
-
         # Restore last selected game, fallback to first visible
         last_game = self.config.get("last_game", "")
         if last_game and last_game in self._visible_games:
@@ -42,20 +40,6 @@ class MainWindow(QMainWindow):
         else:
             first = self._visible_games[0] if self._visible_games else "genshin"
             self._on_game_changed(first)
-
-    def _auto_update_arknights_pools(self):
-        from PySide6.QtCore import QTimer
-
-        def do_update():
-            try:
-                settings = self._ensure_page("settings")
-                updated = settings._do_update_arknights_pool_types()
-                if updated > 0:
-                    logger.info("auto-update arknights pool types: %d records", updated)
-            except Exception:
-                logger.exception("auto-update arknights pool types failed")
-
-        QTimer.singleShot(1000, do_update)
 
     def _init_ui(self):
         self.setWindowTitle("穷观阵 -- 乾坤清策，否极泰来")
@@ -152,7 +136,7 @@ class MainWindow(QMainWindow):
 
         nav_layout.addStretch()
 
-        version = QLabel("v1.1.2")
+        version = QLabel("v1.2.0")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: #bbb; font-size: 11px; padding: 8px;")
         nav_layout.addWidget(version)

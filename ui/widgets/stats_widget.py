@@ -1,5 +1,9 @@
 """统计分析页面"""
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea,
@@ -10,7 +14,7 @@ from PySide6.QtGui import QFont, QColor
 
 from core.database import Database
 from core.analyzer import PityAnalyzer, StatsAnalyzer
-from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names, get_endfield_pity_group, ENDFIELD_PITY_GROUP, ENDFIELD_PITY_RESETS_ON_NAME_CHANGE
+from core.models import BANNER_CONFIGS, GAME_COLORS, get_max_rarity, get_pool_names
 from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
@@ -299,17 +303,6 @@ class StatsWidget(QWidget):
 
         if pool_type is None:
             records = self.db.get_records(account.id)
-        elif game == "endfield" and pool_type:
-            pity_group = get_endfield_pity_group(pool_type)
-            if pity_group in ENDFIELD_PITY_RESETS_ON_NAME_CHANGE:
-                # 武器池：不加载共享记录
-                records = self.db.get_records(account.id, pool_type)
-            else:
-                # 其他池：加载同组所有记录（跨卡池轮换继承保底）
-                shared_types = [pt for pt, g in ENDFIELD_PITY_GROUP.items() if g == pity_group]
-                records = []
-                for pt in shared_types:
-                    records.extend(self.db.get_records(account.id, pt))
         else:
             records = self.db.get_records(account.id, pool_type)
 
@@ -325,6 +318,7 @@ class StatsWidget(QWidget):
                 pity = analyzer.analyze(records)
                 self._update_pity(pity, game)
             except Exception as e:
+                logger.error("保底分析失败: %s", e)
                 self.pity_summary.setText(f"分析失败: {str(e)}")
         else:
             self.pity_summary.setText("全部卡池综合统计（保底分析请切换到具体卡池）")
@@ -360,25 +354,7 @@ class StatsWidget(QWidget):
             ("平均出货", f"{pity['avg_pity']}", f"最欧:{pity['min_pity']} 最非:{pity['max_pity']}", ""),
         ]
 
-        # UP硬保底（终末地特许120抽、武器80抽，明日方舟单UP 150抽等）
-        if pity.get("up_hard_pity", 0) > 0:
-            rows.append((
-                "UP大保底",
-                f"{pity['up_hard_pity_remaining']}/{pity['up_hard_pity']}",
-                "必出UP角色",
-                "" if pity['config'].up_hard_pity_inherits else "不继承"
-            ))
-
-        # 十连保底（终末地每10抽保底5星）
-        if pity.get("multi_pity_size", 0) > 0:
-            rows.append((
-                "十连保底",
-                f"{pity['multi_pity_progress']}/{pity['multi_pity_size']}",
-                f"每{pity['multi_pity_size']}抽保底{pity['multi_pity_rarity']}星",
-                ""
-            ))
-
-        # 自选/兑换（终末地300抽自选、明日方舟限定300抽兑换）
+        # 自选/兑换
         if pity.get("exchange_threshold", 0) > 0:
             rows.append((
                 "自选/兑换",
@@ -395,12 +371,6 @@ class StatsWidget(QWidget):
             self.pity_table.setItem(i, 3, QTableWidgetItem(col4))
 
     def _update_featured(self, stats, game=""):
-        # 明日方舟没有50/50机制，隐藏此区域
-        if game == "arknights":
-            self.featured_summary.setText("明日方舟无50/50机制")
-            self.featured_table.setRowCount(0)
-            return
-
         feat = stats.get_featured_stats()
         if feat["total"] == 0:
             self.featured_summary.setText("暂无5星记录")
@@ -430,29 +400,16 @@ class StatsWidget(QWidget):
         five_stars = [r for r in sorted(records, key=lambda r: (r.time, r.id)) if r.rarity == max_rarity]
         five_stars.reverse()
 
-        # 明日方舟隐藏"是否UP"列
-        is_arknights = game == "arknights"
-        if is_arknights:
-            self.pull_table.setColumnCount(5)
-            self.pull_table.setHorizontalHeaderLabels(
-                ["序号", "名称", "星级", "保底计数", "卡池"]
-            )
-            self.pull_table.setColumnWidth(0, 60)
-            self.pull_table.setColumnWidth(1, 200)
-            self.pull_table.setColumnWidth(2, 110)
-            self.pull_table.setColumnWidth(3, 100)
-            self.pull_table.setColumnWidth(4, 200)
-        else:
-            self.pull_table.setColumnCount(6)
-            self.pull_table.setHorizontalHeaderLabels(
-                ["序号", "名称", "星级", "是否UP", "保底计数", "时间"]
-            )
-            self.pull_table.setColumnWidth(0, 60)
-            self.pull_table.setColumnWidth(1, 200)
-            self.pull_table.setColumnWidth(2, 110)
-            self.pull_table.setColumnWidth(3, 80)
-            self.pull_table.setColumnWidth(4, 100)
-            self.pull_table.setColumnWidth(5, 200)
+        self.pull_table.setColumnCount(6)
+        self.pull_table.setHorizontalHeaderLabels(
+            ["序号", "名称", "星级", "是否UP", "保底计数", "时间"]
+        )
+        self.pull_table.setColumnWidth(0, 60)
+        self.pull_table.setColumnWidth(1, 200)
+        self.pull_table.setColumnWidth(2, 110)
+        self.pull_table.setColumnWidth(3, 80)
+        self.pull_table.setColumnWidth(4, 100)
+        self.pull_table.setColumnWidth(5, 200)
 
         self.pull_table.setRowCount(len(five_stars))
 
@@ -465,15 +422,11 @@ class StatsWidget(QWidget):
             star_item.setForeground(QColor(star_colors.get(r.rarity, "#FF6B35")))
             self.pull_table.setItem(i, 2, star_item)
 
-            if is_arknights:
-                self.pull_table.setItem(i, 3, QTableWidgetItem(str(r.pity_count)))
-                self.pull_table.setItem(i, 4, QTableWidgetItem(r.pool_name or ""))
-            else:
-                up_item = QTableWidgetItem("是" if r.is_featured else "否")
-                up_item.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
-                self.pull_table.setItem(i, 3, up_item)
-                self.pull_table.setItem(i, 4, QTableWidgetItem(str(r.pity_count)))
-                self.pull_table.setItem(i, 5, QTableWidgetItem(r.time[:16] if r.time else ""))
+            up_item = QTableWidgetItem("是" if r.is_featured else "否")
+            up_item.setForeground(QColor("#FF6B35" if r.is_featured else "#4CAF50"))
+            self.pull_table.setItem(i, 3, up_item)
+            self.pull_table.setItem(i, 4, QTableWidgetItem(str(r.pity_count)))
+            self.pull_table.setItem(i, 5, QTableWidgetItem(r.time[:16] if r.time else ""))
 
     def _update_pool_pull_counts(self, account, game):
         """更新卡池抽数显示（仅更新下拉框选项，不显示抽数）"""
