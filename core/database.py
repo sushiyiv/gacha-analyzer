@@ -389,6 +389,10 @@ class Database:
             # 执行 UNIQUE 约束迁移（确保唯一约束为 UNIQUE(account_id, item_id)）
             self._migrate_unique_constraint(conn)
 
+            # 修复并重建所有卡池保底计数
+            self.fix_zzz_bangboo_batches(conn)
+            self._rebuild_pity_counts(conn)
+
     def _migrate_unique_constraint(self, conn):
         """迁移 UNIQUE 约束：从旧的唯一约束迁移到新的唯一约束
 
@@ -977,31 +981,42 @@ class Database:
         ).fetchone()
         return count["cnt"] if count else 0
 
+    def fix_zzz_bangboo_batches(self, conn=None, account_id: int = None):
+        """修正绝区零邦布卡池中被错误分类的记录
+
+        此函数将 item_type 包含 '邦布' 但 pool_type 不是 'bangboo' 的记录修正为 'bangboo'。
+        注意：只更新实际是邦布物品的记录，避免基于时间戳的批量更新导致交叉污染。
+        """
+        if conn is None:
+            conn = self._ensure_conn()
+
+        where_clause = "WHERE game='zzz' AND item_type LIKE '%邦布%' AND pool_type != 'bangboo'"
+        params = []
+        if account_id:
+            where_clause += " AND account_id=?"
+            params.append(account_id)
+
+        # 只更新实际是邦布物品但被错误分类的记录
+        conn.execute(
+            f"UPDATE gacha_records SET pool_type='bangboo' {where_clause}",
+            params
+        )
+        conn.commit()
+
     def calculate_pity_counts(self, account_id: int):
         """重新计算指定账号所有记录的保底计数
 
         当导入新数据或数据被修改后，需要重新计算保底计数。
         此方法会：
-          1. 查询该账号的所有记录（按时间正序排列）
-          2. 遍历记录，为每个保底分组维护一个累加计数器
-          3. 每次遇到最高星物品时，将当前累加值写入 pity_count 并重置计数器
-          4. 提交事务
-
-        算法核心：
-          - 维护一个字典 pity_counts，键为分组键，值为当前累计抽数
-          - 每读一条记录，对应分组的计数器 +1
-          - 当抽到最高星时，将计数器的值写入该记录的 pity_count 字段，然后重置为 0
-          - 这样每条最高星记录的 pity_count 就表示"距离上一次出金抽了多少次"
-
-        参数：
-            account_id (int): 要重新计算保底计数的账号 ID
-
-        排序说明：
-          ORDER BY pool_type, time ASC, id ASC
-          - 先按 pool_type 分组，确保同一卡池的记录连续处理
-          - 再按时间正序（从旧到新），确保保底计数按实际抽卡顺序累加
-          - 相同时间按 id 正序，保证同一秒内的记录也有确定的顺序
+          1. 自动修复绝区零邦布卡池中被误分类的音擎记录
+          2. 查询该账号的所有记录（按时间正序排列）
+          3. 遍历记录，为每个保底分组维护一个累加计数器
+          4. 每次遇到最高星物品时，将当前累加值写入 pity_count 并重置计数器
+          5. 提交事务
         """
+        # 先修复绝区零邦布卡池批次分类
+        self.fix_zzz_bangboo_batches(account_id=account_id)
+
         from core.models import get_max_rarity
         # 获取数据库连接
         with self.connect() as conn:
@@ -1054,6 +1069,121 @@ class Database:
             # 提交事务，将所有 pity_count 的更新写入数据库
             conn.commit()
 
+    @staticmethod
+    def _determine_is_featured(game: str, pool_type: str, item_name: str,
+                               rarity: int, record_time: str) -> bool:
+        """根据游戏规则判断一条记录是否为UP(限定)物品
+
+        复用 fetchers/mihoyo/api.py 中 parse_record() 的UP判断逻辑，
+        用于第三方导入数据后重新校准 is_featured 字段。
+
+        判断规则：
+          1. 非最高星级 → False
+          2. 常驻池/新手池 → False
+          3. 联动池映射: collab→character, collab_weapon→weapon
+          4. 在 LOSEABLE_5STAR_WITH_DATE 中 → 根据抽卡时间与加入日期比较
+          5. 不在 STANDARD_5STAR 中 → True (UP角色)
+          6. 鸣潮使用独立的简化判断逻辑
+
+        参数：
+            game: 游戏标识 (genshin/starrail/zzz/wutheringwaves)
+            pool_type: 卡池类型 (character/weapon/standard/beginner/collab/collab_weapon)
+            item_name: 物品名称
+            rarity: 稀有度
+            record_time: 抽卡时间字符串 "YYYY-MM-DD HH:MM:SS"
+
+        返回：
+            bool: 是否为UP物品
+        """
+        from core.models import get_max_rarity
+
+        # 非最高星级不判定为UP
+        if rarity != get_max_rarity(game):
+            return False
+
+        # 常驻池和新手池没有UP机制
+        if pool_type in ("standard", "beginner"):
+            return False
+
+        # ---- 鸣潮：独立判断逻辑（无 LOSEABLE 机制）----
+        if game == "wutheringwaves":
+            from fetchers.kuro.wutheringwaves import (
+                STANDARD_5STAR_CHARACTERS, STANDARD_5STAR_WEAPONS
+            )
+            is_std = item_name in STANDARD_5STAR_CHARACTERS or item_name in STANDARD_5STAR_WEAPONS
+            return not is_std
+
+        # ---- 米哈游系游戏 (原神/星铁/绝区零) ----
+        from fetchers.mihoyo.api import MihoyoAPI
+
+        # 联动池映射到对应的角色/武器池进行查找
+        lookup_type = pool_type
+        if pool_type == "collab":
+            lookup_type = "character"
+        elif pool_type == "collab_weapon":
+            lookup_type = "weapon"
+
+        standard_items = MihoyoAPI.STANDARD_5STAR.get(game, {}).get(lookup_type, [])
+        loseable_info = MihoyoAPI.LOSEABLE_5STAR_WITH_DATE.get((game, lookup_type), {})
+
+        if item_name in loseable_info:
+            # 在可歪列表中：抽卡时间 >= 加入日期 → 已歪（非UP），否则仍为UP
+            loseable_date = loseable_info[item_name]
+            if record_time and record_time >= loseable_date:
+                return False
+            else:
+                return True
+        elif item_name not in standard_items:
+            # 不在常驻列表，也不在可歪列表 → UP角色
+            return True
+
+        return False
+
+    def recalculate_is_featured(self, account_id: int):
+        """重新计算指定账号所有五星记录的 is_featured (UP标记)
+
+        第三方导入的JSON数据可能 is_featured 不准确，
+        此方法根据游戏规则重新判断每条五星记录是否为UP。
+
+        此方法会：
+          1. 查询该账号的所有五星记录（按时间正序）
+          2. 对每条记录调用 _determine_is_featured() 判断
+          3. UPDATE is_featured 列
+          4. 提交事务
+
+        参数：
+            account_id (int): 要重新计算的账号 ID
+        """
+        from core.models import get_max_rarity
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, game, pool_type, item_name, rarity, time "
+                "FROM gacha_records WHERE account_id=? ORDER BY time ASC, id ASC",
+                (account_id,)
+            ).fetchall()
+
+            for row in rows:
+                rarity = row["rarity"]
+                game = row["game"]
+                # 只处理最高星级的记录
+                if rarity != get_max_rarity(game):
+                    continue
+
+                new_featured = self._determine_is_featured(
+                    game=game,
+                    pool_type=row["pool_type"],
+                    item_name=row["item_name"],
+                    rarity=rarity,
+                    record_time=row["time"] if "time" in row.keys() else "",
+                )
+
+                conn.execute(
+                    "UPDATE gacha_records SET is_featured=? WHERE id=?",
+                    (int(new_featured), row["id"])
+                )
+
+            conn.commit()
+
     def _rebuild_pity_counts(self, conn):
         """重新计算所有账号的保底计数（数据库迁移时使用）
 
@@ -1073,6 +1203,7 @@ class Database:
           - 最后按时间正序排列，确保按实际抽卡顺序处理
           - 这保证了每个账号的每个卡池都按正确顺序计算保底
         """
+        self.fix_zzz_bangboo_batches(conn=conn)
         from core.models import get_max_rarity
         # 查询所有记录，按账号、卡池类型和时间排序
         rows = conn.execute(
@@ -1343,7 +1474,12 @@ class Database:
                 pity_count=item.get("pity_count", 0),
             ))
         # 调用 add_records() 批量插入，返回成功导入的数量
-        return self.add_records(records)
+        count = self.add_records(records)
+        # 导入后重新计算 UP 标记和保底计数（第三方导入数据可能不准确）
+        if count > 0:
+            self.recalculate_is_featured(account_id)
+            self.calculate_pity_counts(account_id)
+        return count
 
     # =====================================================================
     # 数据转换辅助方法（数据库行 -> 数据模型对象）

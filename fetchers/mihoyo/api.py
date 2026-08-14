@@ -80,8 +80,8 @@ class MihoyoAPI:
         "zzz": {
             "character": "2001",       # 频调(角色UP池)，编码2001
             "weapon": "3001",          # 音擎调频(音擎UP池)，编码3001
-            "special": "4001",         # 特殊频道(限定角色池)，编码4001
-            "special_weapon": "5001",  # 特殊频道音擎(限定音擎池)，编码5001
+            "special": "4001",         # 特殊频道(限定角色复刻池)，编码4001
+            "special_weapon": "5001",  # 特殊频道音擎(限定音擎复刻池)，编码5001
             "bangboo": "6001",         # 邦布调频(邦布池)，编码6001
             "standard": "1001",        # 常驻调频(标准池)，编码1001
         },
@@ -263,8 +263,10 @@ class MihoyoAPI:
                         records = data.get("data", {}).get("list_v2", [])
                     # 如果list为空，说明当前卡池的记录已全部获取完毕
                     if not records:
+                        # 调试: 显示API响应关键信息
+                        resp_info = f"retcode={data.get('retcode')}, data_keys={list(data.get('data', {}).keys()) if data.get('data') else 'None'}, list_len={len(data.get('data', {}).get('list', [])) if data.get('data') else 0}"
                         if progress_callback:
-                            progress_callback(f"{pool_name} 获取完成，共 {pool_total} 条", pool_progress + 1.0 / total_pools)
+                            progress_callback(f"{pool_name} 返回0条，{resp_info}", pool_progress + 1.0 / total_pools)
                             # 报告当前卡池获取完成，进度推进一个完整卡池的份额
                         break  # 跳出内层while循环，开始处理下一个卡池
 
@@ -334,9 +336,9 @@ class MihoyoAPI:
     STANDARD_5STAR = {
         "genshin": {
             "character": [
-                "梦见月瑞希",  # 常驻5星角色: Mualani (5.0新增)
                 "迪希雅",     # 常驻5星角色: Dehya (3.5新增)
                 "提纳里",     # 常驻5星角色: Tighnari (3.0新增，首位进入常驻的限定角色)
+                "梦见月瑞希", # 常驻5星角色: 5.0新增进入常驻
                 "刻晴",       # 常驻5星角色: Keqing (开服常驻)
                 "莫娜",       # 常驻5星角色: Mona (开服常驻)
                 "七七",       # 常驻5星角色: Qiqi (开服常驻)
@@ -422,6 +424,16 @@ class MihoyoAPI:
     # 用于判断某个5星角色在抽卡时间点是否为UP状态
     # 如果角色在抽卡时间之前就已经加入可歪池，则不算UP
     LOSEABLE_5STAR_WITH_DATE = {
+        ("genshin", "character"): {
+            # 原神角色活动池的可歪角色及其加入常驻时间
+            "提纳里": "2022-09-28",
+            # 提纳里 (Tighnari) 3.1版本(2022-09-28)加入常驻
+            # 3.0版本(2022-08-24)首登为限定，之后进入常驻
+
+            "迪希雅": "2023-04-12",
+            # 迪希雅 (Dehya) 3.6版本(2023-04-12)加入常驻
+            # 3.5版本(2023-03-01)首登为限定，之后进入常驻
+        },
         ("starrail", "character"): {
             # 星铁角色活动池的可歪角色及其加入时间
             # "星缘相邀" 机制: 限定角色在后续版本中加入常驻歪池
@@ -497,15 +509,22 @@ class MihoyoAPI:
 
         # ----- 第四步: ZZZ卡池分类修正 -----
         if game == "zzz":
-            item_type_raw = raw.get("item_type", "")
-            # 绝区零的API可能将邦布错误地归入其他卡池
-            # 需要根据item_type字段来修正pool_type
-            if "邦布" in item_type_raw and pool_type != "bangboo":
-                pool_type = "bangboo"
-                # 如果物品类型包含"邦布"但卡池不是bangboo，则修正为bangboo
-            elif "音擎" in item_type_raw and pool_type == "bangboo":
-                pool_type = "special_weapon"
-                # 如果物品类型是"音擎"但被错误归入bangboo池，修正为special_weapon
+            # 绝区零API的请求gacha_type和响应gacha_type不同:
+            # 请求代码: 2001(角色), 3001(音擎), 5001(特殊音擎), 6001(邦布), 1001(常驻)
+            # 响应代码: 2(角色), 3(音擎), 5(邦布), 1(常驻)
+            # API可能将邦布记录返回到special_weapon(5001)池中
+            # 需要根据响应中的gacha_type来修正pool_type
+            raw_gacha_type = str(raw.get("gacha_type", ""))
+            RESPONSE_GACHA_MAP = {
+                "2": "character",
+                "3": "weapon",
+                "5": "bangboo",
+                "1": "standard",
+                "102": "special",
+                "103": "special_weapon",
+            }
+            if raw_gacha_type in RESPONSE_GACHA_MAP:
+                pool_type = RESPONSE_GACHA_MAP[raw_gacha_type]
 
         # ----- 第五步: 提取物品类型和时间 -----
         item_type = raw.get("item_type", "")
@@ -527,11 +546,17 @@ class MihoyoAPI:
                 is_featured = False
             else:
                 # 限定池、武器池、联动池需要判断是否为UP
-                standard_items = MihoyoAPI.STANDARD_5STAR.get(game, {}).get(pool_type, [])
+                # 联动池直接使用角色池/武器池的判定逻辑
+                lookup_type = pool_type
+                if pool_type == "collab":
+                    lookup_type = "character"
+                elif pool_type == "collab_weapon":
+                    lookup_type = "weapon"
+                standard_items = MihoyoAPI.STANDARD_5STAR.get(game, {}).get(lookup_type, [])
                 # 获取该游戏该卡池类型的常驻5星物品列表
 
                 # 检查是否为可歪角色(有时间限制的往期UP角色)
-                loseable_info = MihoyoAPI.LOSEABLE_5STAR_WITH_DATE.get((game, pool_type), {})
+                loseable_info = MihoyoAPI.LOSEABLE_5STAR_WITH_DATE.get((game, lookup_type), {})
                 if item_name in loseable_info:
                     # 该角色在可歪列表中，需要根据抽卡时间判断是否为UP
                     loseable_date = loseable_info[item_name]  # 加入可歪池的日期

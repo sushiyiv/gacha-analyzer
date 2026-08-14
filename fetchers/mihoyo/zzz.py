@@ -37,19 +37,20 @@ class ZZZFetcher(MihoyoGachaFetcher):
     game_key = "zzz"
     # 绝区零在米哈游API系统中的内部标识字符串
     # 该值用于: 1) 选择API端点(public-operation-nap.mihoyo.com)
-    #          2) 选择卡池类型编码映射(2001/3001/4001/5001/6001/1001)
+    #          2) 选择卡池类型编码映射(2001/3001/4001/5001/1001)
 
     game_name = "绝区零"
     # 绝区零的中文显示名称，用于进度提示消息中
     # 例如: "正在获取绝区零抽卡记录..."
 
-    supported_pools = ["character", "weapon", "standard"]
+    supported_pools = ["character", "weapon", "bangboo", "standard"]
     # 绝区零支持的卡池类型列表:
     # - "character": 频调(限定角色UP池，编码2001)
     # - "weapon":    音擎调频(限定音擎UP池，编码3001)
+    # - "bangboo":   邦布调频(邦布池，编码5001)
     # - "standard":  常驻调频(标准池，编码1001)
     # 注意: 绝区零没有新手池，所以 supported_pools 不包含 "beginner"
-    # 另有特殊池(special=4001, special_weapon=5001, bangboo=6001)在GACHA_TYPES中定义但未列入
+    # 另有特殊池(special=4001)在GACHA_TYPES中定义但未列入
 
     cache_game_key = "zzz"
     # CacheReader使用的缓存目录标识key

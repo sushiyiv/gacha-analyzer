@@ -117,7 +117,7 @@ def main():
     app.setFont(font)
 
     app.setApplicationName("穷观阵")
-    app.setApplicationVersion("1.2.0")
+    app.setApplicationVersion("1.2.1")
     app.setOrganizationName("QianGuanZhen")
 
     window = MainWindow()

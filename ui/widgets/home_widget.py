@@ -111,11 +111,18 @@ class HomeWidget(QWidget):
         """)
 
         # 统计项模板
-        self._stat_full = [("total", "总抽数", "#333"), ("star5", "最高星数", "#FF6B35"),
+        self._stat_all = [("total", "总抽数", "#333"),
+                          ("up_ratio", "UP/总金数", "#E91E63"), ("win_rate", "小保底不歪率", "#4CAF50"),
+                          ("avg_pity", "平均出金", "#FF9800"),
+                          ("avg_featured_char", "每UP需(角色)", "#4CAF50"),
+                          ("avg_featured_weapon", "每UP需(武器)", "#2196F3")]
+        self._stat_full = [("total", "总抽数", "#333"), ("pity", "已垫抽数", "#1a73e8"),
                            ("up_ratio", "UP/总金数", "#E91E63"), ("win_rate", "小保底不歪率", "#4CAF50"),
-                           ("avg_pity", "平均出金", "#FF9800"), ("avg_featured", "每UP需", "#1a73e8")]
-        self._stat_simple = [("total", "总抽数", "#333"), ("star5", "最高星数", "#FF6B35"),
-                             ("avg_pity", "平均出金", "#FF9800")]
+                           ("avg_pity", "平均出金", "#FF9800"), ("avg_featured", "每UP需", "#4CAF50")]
+        self._stat_simple = [("total", "总抽数", "#333"), ("gold_count", "金数", "#FF9800"),
+                             ("pity", "已垫抽数", "#1a73e8"), ("avg_pity", "平均出金", "#FF9800")]
+        self._stat_bangboo = [("total", "总抽数", "#333"), ("gold_count", "邦布数", "#E91E63"),
+                              ("pity", "已垫抽数", "#1a73e8"), ("avg_pity", "平均出金", "#FF9800")]
 
         scroll_layout.addWidget(self.pool_tabs)
 
@@ -429,14 +436,14 @@ class HomeWidget(QWidget):
 
         # "全部"标签页
         all_pool_types = [pt for pt, _ in ordered_pools]
-        stat_keys = self._stat_full
+        stat_keys = self._stat_all
         tab = self._create_pool_tab("全部", None, stat_keys, all_pool_types, pool_name_map, pool_names_by_type=pool_names_by_type)
         self._tabs.append(tab)
         self.pool_tabs.addTab(tab, "全部")
 
         # 各卡池标签页
         for pool_type, name in ordered_pools:
-            stat_keys = self._stat_full if pool_type in ("character", "weapon") else self._stat_simple
+            stat_keys = self._stat_full if pool_type in ("character", "weapon", "collab", "collab_weapon", "special", "special_weapon") else self._stat_bangboo if pool_type == "bangboo" else self._stat_simple
             pool_names = pool_names_by_type.get(pool_type, set())
             tab = self._create_pool_tab(name, pool_type, stat_keys, None, pool_name_map, pool_names_by_type=pool_names_by_type)
             self._tabs.append(tab)
@@ -788,6 +795,23 @@ class HomeWidget(QWidget):
         if "total" in stat_items:
             stat_items["total"]._value_label.setText(str(total))
 
+        # 金数/邦布数
+        if "gold_count" in stat_items:
+            stat_items["gold_count"]._value_label.setText(str(star5_count))
+
+        # 已垫抽数
+        if "pity" in stat_items:
+            if pool_type:
+                config = BANNER_CONFIGS.get((game, pool_type))
+                if config:
+                    pool_name_filter = getattr(tab, '_pool_name_filter', None)
+                    pity = self.db.get_last_5star_pity(account.id, pool_type, game, pool_name=pool_name_filter or "")
+                    stat_items["pity"]._value_label.setText(f"{pity}抽")
+                else:
+                    stat_items["pity"]._value_label.setText("-")
+            else:
+                stat_items["pity"]._value_label.setText("-")
+
         # 五星数
         if "star5" in stat_items:
             stat_items["star5"]._value_label.setText(str(star5_count))
@@ -809,21 +833,46 @@ class HomeWidget(QWidget):
             else:
                 stat_items["win_rate"]._value_label.setText("-")
 
-        # 平均出金
+        # 平均出金 (所有五星的保底计数之和 / 五星数)
         if "avg_pity" in stat_items:
             if star5_count > 0:
-                avg = round(total / star5_count, 1)
+                total_pity = sum(r.pity_count for r in five_stars)
+                avg = round(total_pity / star5_count, 1)
                 stat_items["avg_pity"]._value_label.setText(f"{avg}抽")
             else:
                 stat_items["avg_pity"]._value_label.setText("-")
 
-        # 每UP需抽数
+        # 每UP需抽数 (限定池所有五星保底计数之和 / UP五星数)
         if "avg_featured" in stat_items:
-            if five_stars:
-                avg = sum(r.pity_count for r in five_stars) / len(five_stars)
-                stat_items["avg_featured"]._value_label.setText(f"{avg:.1f}抽")
+            up_stars = [r for r in five_stars if r.is_featured]
+            if up_stars:
+                # 限定池(非standard/beginner)所有五星的保底计数总和
+                limited_5s = [r for r in five_stars if pool_type not in ("standard", "beginner")]
+                total_pity = sum(r.pity_count for r in limited_5s)
+                avg = total_pity / len(up_stars)
+                stat_items["avg_featured"]._value_label.setText(f"{avg:.1f}抽数")
             else:
                 stat_items["avg_featured"]._value_label.setText("-")
+        _char_pools = {"character", "collab", "special"}
+        _weapon_pools = {"weapon", "collab_weapon", "special_weapon"}
+        if "avg_featured_char" in stat_items:
+            char_5s = [r for r in five_stars if r.pool_type in _char_pools]
+            up_chars = [r for r in char_5s if r.is_featured]
+            if up_chars:
+                total_pity = sum(r.pity_count for r in char_5s)
+                avg = total_pity / len(up_chars)
+                stat_items["avg_featured_char"]._value_label.setText(f"{avg:.1f}抽")
+            else:
+                stat_items["avg_featured_char"]._value_label.setText("-")
+        if "avg_featured_weapon" in stat_items:
+            weapon_5s = [r for r in five_stars if r.pool_type in _weapon_pools]
+            up_weapons = [r for r in weapon_5s if r.is_featured]
+            if up_weapons:
+                total_pity = sum(r.pity_count for r in weapon_5s)
+                avg = total_pity / len(up_weapons)
+                stat_items["avg_featured_weapon"]._value_label.setText(f"{avg:.1f}抽")
+            else:
+                stat_items["avg_featured_weapon"]._value_label.setText("-")
 
         # 保底进度条
         pool_name_filter = getattr(tab, '_pool_name_filter', None)

@@ -106,7 +106,7 @@ class SettingsWidget(QWidget):
         export_csv_btn.clicked.connect(lambda: self._export("csv"))
         btn_row2.addWidget(export_csv_btn)
 
-        recalc_btn = QPushButton("重新计算保底数")
+        recalc_btn = QPushButton("重新计算保底数和UP标记")
         recalc_btn.setStyleSheet("background-color: #666;")
         recalc_btn.clicked.connect(self._recalculate_pity)
         btn_row2.addWidget(recalc_btn)
@@ -142,7 +142,7 @@ class SettingsWidget(QWidget):
         about_group = QGroupBox("关于")
         about_group.setStyleSheet(GROUPBOX_STYLE)
         about_layout = QVBoxLayout(about_group)
-        about_layout.addWidget(QLabel("穷观阵 v1.2.0"))
+        about_layout.addWidget(QLabel("穷观阵 v1.2.1"))
         about_layout.addWidget(QLabel("支持游戏: 原神、星穹铁道、绝区零、鸣潮"))
         about_layout.addWidget(QLabel("数据完全离线存储，不会上传到任何服务器"))
         main_layout.addWidget(about_group)
@@ -310,7 +310,7 @@ class SettingsWidget(QWidget):
         QMessageBox.information(self, "保存成功", "路径配置已保存")
 
     def _recalculate_pity(self):
-        """重新计算所有账号的保底数"""
+        """重新计算所有账号的保底数和UP标记"""
         accounts = self.db.get_accounts()
         if not accounts:
             QMessageBox.information(self, "提示", "没有账号需要处理")
@@ -318,14 +318,15 @@ class SettingsWidget(QWidget):
 
         reply = QMessageBox.question(
             self, "确认重新计算",
-            f"确定要重新计算 {len(accounts)} 个账号的保底数吗？",
+            f"确定要重新计算 {len(accounts)} 个账号的保底数和UP标记吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
         for account in accounts:
+            self.db.recalculate_is_featured(account.id)
             self.db.calculate_pity_counts(account.id)
 
-        QMessageBox.information(self, "完成", f"已重新计算 {len(accounts)} 个账号的保底数")
+        QMessageBox.information(self, "完成", f"已重新计算 {len(accounts)} 个账号的保底数和UP标记")
         self.main_window.refresh_all()

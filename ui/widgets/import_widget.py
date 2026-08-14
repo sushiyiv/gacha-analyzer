@@ -780,6 +780,10 @@ class ImportWidget(QWidget):
             if records:
                 count = self.db.add_records(records)
                 self._log(f"从文件导入 {count} 条新记录")
+                # 导入后计算保底数
+                self._log("正在计算保底数...")
+                self.db.calculate_pity_counts(account.id)
+                self._log("保底数计算完成")
                 QMessageBox.information(self, "导入成功", f"成功导入 {count} 条新记录！")
                 self.main_window.refresh_all()
             else:
