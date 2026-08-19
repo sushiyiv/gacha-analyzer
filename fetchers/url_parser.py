@@ -192,8 +192,13 @@ class URLParser:
         params = info.get("params", {})
         # 获取URL中解析出的所有参数
 
-        gacha_type = params.get("gacha_type", "")
-        # 获取gacha_type参数值(米哈游系列URL中表示卡池类型的数字编码)
+        # 绝区零的卡池参数名是 real_gacha_type，其他米哈游游戏使用 gacha_type。
+        # URLParser.parse() 已先完成游戏识别，因此这里可以安全地区分两种格式。
+        game = info.get("game", "")
+        gacha_type = params.get(
+            "real_gacha_type" if game == "zzz" else "gacha_type", ""
+        )
+        # 获取表示卡池类型的数字编码
 
         # ----- 米哈游系列gacha_type数字编码映射 -----
         if isinstance(gacha_type, str) and gacha_type.isdigit():
@@ -206,8 +211,11 @@ class URLParser:
                 "1": "standard",    # gacha_type=1 → 常驻池
                 "2": "character",   # gacha_type=2 → 角色池
                 "3": "weapon",      # gacha_type=3 → 武器池
+                "5": "bangboo",     # real_gacha_type=5 → 邦布池
                 "11": "beginner",   # gacha_type=11 → 新手池
                 "12": "character",  # gacha_type=12 → 角色池(星铁特定)
+                "102": "special",   # real_gacha_type=102 → 独家重映
+                "103": "special_weapon",  # real_gacha_type=103 → 音擎回响
             }
             return type_map.get(gacha_type, "character")
             # 使用get方法安全查找，未找到则默认返回 "character"

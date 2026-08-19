@@ -78,12 +78,12 @@ class MihoyoAPI:
             "collab_weapon": "22", # 联动光锥跃迁，编码22
         },
         "zzz": {
-            "character": "2001",       # 频调(角色UP池)，编码2001
-            "weapon": "3001",          # 音擎调频(音擎UP池)，编码3001
-            "special": "4001",         # 特殊频道(限定角色复刻池)，编码4001
-            "special_weapon": "5001",  # 特殊频道音擎(限定音擎复刻池)，编码5001
-            "bangboo": "6001",         # 邦布调频(邦布池)，编码6001
-            "standard": "1001",        # 常驻调频(标准池)，编码1001
+            "character": "2",            # 频调(角色UP池)，响应编码2
+            "weapon": "3",               # 音擎调频(音擎UP池)，响应编码3
+            "special": "102",            # 独家重映(限定角色复刻池)，响应编码102
+            "special_weapon": "103",     # 音擎回响(限定音擎复刻池)，响应编码103
+            "bangboo": "5",              # 邦布调频(邦布池)，响应编码5
+            "standard": "1",             # 常驻调频(标准池)，响应编码1
         },
         "wutheringwaves": {
             "character": "1",              # 角色活动唤取，编码1
@@ -164,6 +164,14 @@ class MihoyoAPI:
                 auth_params[key] = base_params[key][0]
                 # base_params[key] 是一个列表，取第一个元素(通常是唯一的值)
 
+        # 绝区零使用 real_gacha_type/init_log_gacha_base_type，不能按原神/星铁的
+        # gacha_type/default_gacha_type 处理，否则特殊卡池请求会被服务端忽略。
+        zzz_params = {}
+        if game == "zzz":
+            for key in ["real_gacha_type", "init_log_gacha_base_type"]:
+                if key in base_params:
+                    zzz_params[key] = base_params[key][0]
+
         # 联动池可能需要额外参数(gacha_id, decide_item_id_list, timestamp)
         collab_extra_params = {}
         for key in ["gacha_id", "decide_item_id_list", "timestamp"]:
@@ -220,11 +228,17 @@ class MihoyoAPI:
                 params = {
                     **auth_params,           # 展开认证参数(authkey, game_biz, region等)
                     "lang": "zh-cn",         # 强制使用中文语言(确保返回中文名称)
-                    "gacha_type": gacha_type_id,  # 当前卡池类型的API编码
-                    "page": str(page),       # 页码(字符串类型)
+                    "page": str(page),       # 兼容旧接口的页码参数
                     "size": "20",            # 每页记录数，API最大支持20条
-                    "end_id": end_id,        # 分页游标，返回ID > end_id 的记录
+                    "end_id": end_id,        # 分页游标
                 }
+                if game == "zzz":
+                    # ZZZ 的请求池编码必须放在 real_gacha_type；保留初始池参数
+                    # 以兼容从任意调频记录页面复制出的 URL。
+                    params.update(zzz_params)
+                    params["real_gacha_type"] = gacha_type_id
+                else:
+                    params["gacha_type"] = gacha_type_id
                 # 联动池需要额外参数才能返回数据
                 if pool_name in ("collab", "collab_weapon"):
                     params.update(collab_extra_params)
@@ -509,22 +523,22 @@ class MihoyoAPI:
 
         # ----- 第四步: ZZZ卡池分类修正 -----
         if game == "zzz":
-            # 绝区零API的请求gacha_type和响应gacha_type不同:
-            # 请求代码: 2001(角色), 3001(音擎), 5001(特殊音擎), 6001(邦布), 1001(常驻)
-            # 响应代码: 2(角色), 3(音擎), 5(邦布), 1(常驻)
-            # API可能将邦布记录返回到special_weapon(5001)池中
-            # 需要根据响应中的gacha_type来修正pool_type
+            # ZZZ请求使用短编码，响应中的gacha_type通常只返回2/3/5/1。
+            # 重映和回响接口返回的2/3与普通角色/音擎池相同，因此这些池必须保留请求池上下文。
             raw_gacha_type = str(raw.get("gacha_type", ""))
-            RESPONSE_GACHA_MAP = {
-                "2": "character",
-                "3": "weapon",
-                "5": "bangboo",
-                "1": "standard",
-                "102": "special",
-                "103": "special_weapon",
-            }
-            if raw_gacha_type in RESPONSE_GACHA_MAP:
-                pool_type = RESPONSE_GACHA_MAP[raw_gacha_type]
+            if raw_gacha_type == "5":
+                # 邦布记录可能从5001接口返回，按响应类型优先修正。
+                pool_type = "bangboo"
+            elif raw_gacha_type == "1":
+                pool_type = "standard"
+            elif raw_gacha_type == "2":
+                pool_type = "special" if pool_type == "special" else "character"
+            elif raw_gacha_type == "3":
+                pool_type = "special_weapon" if pool_type == "special_weapon" else "weapon"
+            elif raw_gacha_type == "102":
+                pool_type = "special"
+            elif raw_gacha_type == "103":
+                pool_type = "special_weapon"
 
         # ----- 第五步: 提取物品类型和时间 -----
         item_type = raw.get("item_type", "")
