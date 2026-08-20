@@ -142,7 +142,7 @@ class SettingsWidget(QWidget):
         about_group = QGroupBox("关于")
         about_group.setStyleSheet(GROUPBOX_STYLE)
         about_layout = QVBoxLayout(about_group)
-        about_layout.addWidget(QLabel("穷观阵 v1.2.1"))
+        about_layout.addWidget(QLabel("穷观阵 v1.2.2"))
         about_layout.addWidget(QLabel("支持游戏: 原神、星穹铁道、绝区零、鸣潮"))
         about_layout.addWidget(QLabel("数据完全离线存储，不会上传到任何服务器"))
         main_layout.addWidget(about_group)

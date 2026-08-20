@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
 
         nav_layout.addStretch()
 
-        version = QLabel("v1.2.1")
+        version = QLabel("v1.2.2")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: #bbb; font-size: 11px; padding: 8px;")
         nav_layout.addWidget(version)
