@@ -46,23 +46,29 @@
 
 ## 安装与运行
 
-### 环境要求
+### 方式一：下载压缩包（推荐）
+
+从 [Releases](https://github.com/sushiyiv/gacha-analyzer/releases) 下载最新版本的压缩包，解压后直接运行 `穷观阵.exe` 即可，无需安装 Python 和任何依赖。
+
+### 方式二：从源码运行
+
+#### 环境要求
 - Python 3.8+
 - Windows 10 / 11
 
-### 安装依赖
+#### 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 运行程序
+#### 运行程序
 
 ```bash
 python main.py
 ```
 
-### 打包成 exe
+#### 打包成 exe
 
 ```bash
 python build.py
