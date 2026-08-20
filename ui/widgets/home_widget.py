@@ -248,7 +248,9 @@ class HomeWidget(QWidget):
         card_layout.addWidget(name_label)
 
         # 统计行（最高星数、不歪率、平均出金）
-        sorted_records = sorted(records, key=lambda r: (r.time, r.id))
+        sorted_records = sorted(records, key=lambda r: (
+            r.time, -r.id if game == "wutheringwaves" and r.id is not None else (r.id or 0)
+        ))
         total = len(records)
         five_stars = [r for r in sorted_records if r.rarity == max_rarity]
         star5_count = len(five_stars)
@@ -786,7 +788,9 @@ class HomeWidget(QWidget):
         pool_type = tab._pool_type
         max_rarity = get_max_rarity(game)
 
-        sorted_records = sorted(records, key=lambda r: (r.time, r.id))
+        sorted_records = sorted(records, key=lambda r: (
+            r.time, -r.id if game == "wutheringwaves" and r.id is not None else (r.id or 0)
+        ))
         total = len(records)
         five_stars = [r for r in sorted_records if r.rarity == max_rarity]
         star5_count = len(five_stars)

@@ -955,12 +955,17 @@ class Database:
 
         # =====================================================
         # 按 pool_type 和 pool_name 过滤查询保底计数
-        # =====================================================
+        # 鸣潮接口返回同一秒内按最新在前，导入后的较小 id 反而更新。
+        # 因此同一时间戳使用 id ASC 找最新五星，并使用 id < 统计其后的记录。
+        wuthering = game == "wutheringwaves"
+        order_clause = "time DESC, id ASC" if wuthering else "time DESC, id DESC"
+        after_clause = "(time > ? OR (time = ? AND id < ?))" if wuthering else "(time > ? OR (time = ? AND id > ?))"
+
         # 第一次查询：找到最后一次出最高星的时间和 id
         row = conn.execute(
-            """SELECT time, id FROM gacha_records
+            f"""SELECT time, id FROM gacha_records
                WHERE account_id=? AND pool_type=? AND pool_name=? AND rarity>=?
-               ORDER BY time DESC, id DESC LIMIT 1""",
+               ORDER BY {order_clause} LIMIT 1""",
             (account_id, pool_type, pool_name, max_rarity)
         ).fetchone()
 
@@ -975,8 +980,8 @@ class Database:
 
         # 第二次查询：统计最后一次最高星之后的所有抽卡次数
         count = conn.execute(
-            """SELECT COUNT(*) as cnt FROM gacha_records
-               WHERE account_id=? AND pool_type=? AND pool_name=? AND (time > ? OR (time = ? AND id > ?))""",
+            f"""SELECT COUNT(*) as cnt FROM gacha_records
+               WHERE account_id=? AND pool_type=? AND pool_name=? AND {after_clause}""",
             (account_id, pool_type, pool_name, row["time"], row["time"], row["id"])
         ).fetchone()
         return count["cnt"] if count else 0
@@ -1023,7 +1028,8 @@ class Database:
             # 查询该账号的所有抽卡记录，只选择需要的字段以提高性能
             rows = conn.execute(
                 "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records "
-                "WHERE account_id=? ORDER BY pool_type, time ASC, id ASC",
+                "WHERE account_id=? ORDER BY pool_type, time ASC, "
+                "CASE WHEN game='wutheringwaves' THEN -id ELSE id END ASC",
                 (account_id,)
             ).fetchall()
 
@@ -1208,7 +1214,8 @@ class Database:
         # 查询所有记录，按账号、卡池类型和时间排序
         rows = conn.execute(
             "SELECT id, game, pool_type, pool_name, rarity FROM gacha_records "
-            "ORDER BY account_id, pool_type, time ASC, id ASC"
+            "ORDER BY account_id, pool_type, time ASC, "
+            "CASE WHEN game='wutheringwaves' THEN -id ELSE id END ASC"
         ).fetchall()
 
         # 保底计数器字典：键为分组键（元组），值为当前累加的抽卡次数

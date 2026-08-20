@@ -1,3 +1,6 @@
+# ===== Claude Code =====
+.claude/
+
 # ===== 个人数据（抽卡记录、账号信息、用户配置）=====
 data/gacha_records.db
 data/gacha_records.db-shm

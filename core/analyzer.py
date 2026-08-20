@@ -7,6 +7,13 @@ from typing import List, Dict, Optional
 from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, Rarity, get_max_rarity
 
 
+def _record_time_key(record):
+    """按实际抽卡顺序排序；鸣潮接口同秒记录是最新在前。"""
+    if record.game == "wutheringwaves":
+        return (record.time, -record.id if record.id is not None else 0)
+    return (record.time, record.id or 0)
+
+
 def get_rate_at_pull(config: BannerConfig, pull_number: int) -> float:
     """计算第N抽出5星的概率"""
     if pull_number >= config.hard_pity:
@@ -77,7 +84,7 @@ class PityAnalyzer:
         max_rarity = get_max_rarity(self.game)
 
         # 按时间排序
-        sorted_records = sorted(records, key=lambda r: (r.time, r.id))
+        sorted_records = sorted(records, key=_record_time_key)
 
         # 计算当前保底进度
         last_5star_idx = -1
@@ -215,7 +222,7 @@ class StatsAnalyzer:
 
     def get_pull_distribution(self, rarity: int = 5) -> List[int]:
         """获取出货抽数分布"""
-        sorted_records = sorted(self.records, key=lambda r: (r.time, r.id))
+        sorted_records = sorted(self.records, key=_record_time_key)
         distribution = []
         last_idx = -1
         for i, r in enumerate(sorted_records):

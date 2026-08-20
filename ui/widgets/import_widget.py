@@ -963,7 +963,11 @@ class ImportWidget(QWidget):
         type_map = UIGF_TYPE_MAP.get(game, {})
         records = []
 
-        for item in data.get("list", []):
+        # UIGF 文件通常是最新在前，反转为从旧到新，
+        # 保证导入后数据库 id 顺序与时间顺序一致
+        items = list(reversed(data.get("list", [])))
+
+        for item in items:
             gacha_type = str(item.get("gacha_type", item.get("uigf_gacha_type", "")))
             pool_type = type_map.get(gacha_type, "character")
 
