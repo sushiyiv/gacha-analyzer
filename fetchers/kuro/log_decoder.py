@@ -1,12 +1,9 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """鸣潮游戏日志解密 - 纯Python实现，无需WaveToolsHelper"""
 
 import re
 from typing import List, Optional
 
-# 编码表：每个高位字节(0x80-0xFF)映射到1或2个字符
-# 0x80-0x9F 和 0xC0-0xDF 各映射2个字符，通过 bit0 消歧
-# 0xA0-0xBF 和 0xE0-0xFF 各映射1个字符（大写字母/符号）
 _BYTE_TO_CHARS = {
     0x80: ('%', 'o'), 0x81: ('$', 'n'), 0x82: ("'", 'm'), 0x83: ('&', 'l'),
     0x84: ('!', 'k'), 0x85: (' ', 'j'), 0x86: ('#', 'i'), 0x87: ('"', 'h'),
@@ -39,7 +36,6 @@ _BYTE_TO_CHARS = {
     0xfe: '[', 0xff: 'Z',
 }
 
-# URL中有效的字符集（RFC 3986）
 _URL_VALID_CHARS = set(
     'abcdefghijklmnopqrstuvwxyz'
     'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -95,13 +91,11 @@ def _decode_url_at(data, start):
     while j < len(data) and j - start < max_len:
         b = data[j]
         if b < 0x80:
-            # 普通ASCII字符
             ch = chr(b)
             if ch in _URL_VALID_CHARS:
                 url_chars.append(ch)
                 j += 1
             else:
-                # 非URL字符，URL结束
                 break
         else:
             ch = _decode_byte(b)

@@ -15,27 +15,34 @@ from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from core.database import Database
-from core.models import Account, GachaRecord, GAME_NAMES
+from core.models import Account, GachaRecord, GAME_NAMES, make_item_id
 from ui.widgets.style_constants import GROUPBOX_STYLE
 
 
 class FetchThread(QThread):
-    """后台获取线程"""
+    """后台获取线程：拉取 + 入库，支持可中断取消"""
     progress = Signal(str, float)
-    finished = Signal(list)
+    finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, game, url=None, account_id=None, latest_time=None):
+    def __init__(self, game, url=None, account_id=None, latest_time=None, account=None):
         super().__init__()
         self.game = game
         self.url = url
         self.account_id = account_id
         self.latest_time = latest_time
+        self.account = account
         self._cancelled = False
         self.detected_uid = ""
 
     def cancel(self):
         self._cancelled = True
+        fetcher = getattr(self, "_fetcher_instance", None)
+        if fetcher is not None:
+            try:
+                fetcher.abort()
+            except Exception:
+                pass
 
     def is_cancelled(self):
         return self._cancelled
@@ -43,18 +50,74 @@ class FetchThread(QThread):
     def run(self):
         try:
             from fetchers import get_fetcher
+            from fetchers.mihoyo.api import MihoyoAPI
+            from core.database import Database
+
             fetcher = get_fetcher(self.game)
-            self._fetcher_instance = fetcher  # 保存引用供取消时使用
+            self._fetcher_instance = fetcher
             fetcher.set_progress_callback(lambda msg, p: self.progress.emit(msg, p))
             fetcher._cancel_check = self.is_cancelled
-            records = fetcher.fetch_records(url=self.url, account_id=self.account_id, latest_time=self.latest_time)
-            self.detected_uid = getattr(fetcher, '_detected_uid', '')
+
+            records = fetcher.fetch_records(
+                url=self.url, account_id=self.account_id, latest_time=self.latest_time
+            )
+            self.detected_uid = getattr(fetcher, "_detected_uid", "")
             if self._cancelled:
                 self.error.emit("用户已取消获取")
+                return
+
+            # 入库放到工作线程，避免主线程卡死
+            self.progress.emit("正在写入数据库...", 0.92)
+            db = Database()
+            account = self.account
+            if account is not None:
+                if self.detected_uid and self.detected_uid != account.uid:
+                    account.uid = self.detected_uid
+                if not account.uid:
+                    uid = MihoyoAPI.get_uid_from_records(records)
+                    if uid:
+                        account.uid = uid
+                if not account.nickname and account.uid:
+                    # 昵称生成放在 UI 层，这里只保证 uid
+                    pass
+                db.update_account(account)
+
+                gacha_records = []
+                for raw in records:
+                    if isinstance(raw, dict):
+                        gacha_records.append(
+                            MihoyoAPI.parse_record(raw, account.game, account.id)
+                        )
+                    else:
+                        gacha_records.append(raw)
+
+                new_count = db.add_records(gacha_records)
+                if self._cancelled:
+                    self.error.emit("用户已取消获取")
+                    return
+                if new_count > 0:
+                    self.progress.emit("正在计算保底数...", 0.96)
+                    db.calculate_pity_counts(account.id)
+
+                self.finished.emit({
+                    "total": len(records),
+                    "new_count": new_count,
+                    "skipped_count": len(records) - new_count,
+                    "detected_uid": self.detected_uid,
+                    "account_id": account.id,
+                    "game": account.game,
+                })
             else:
-                self.finished.emit(records)
+                self.finished.emit({
+                    "total": len(records),
+                    "new_count": 0,
+                    "skipped_count": 0,
+                    "detected_uid": self.detected_uid,
+                    "account_id": self.account_id,
+                    "game": self.game,
+                })
         except Exception as e:
-            if self._cancelled:
+            if self._cancelled or "取消" in str(e):
                 self.error.emit("用户已取消获取")
             else:
                 logger.exception("获取抽卡记录失败")
@@ -289,10 +352,7 @@ class ImportWidget(QWidget):
             f"可粘贴到浏览器或其他工具中使用。")
 
     def _auto_fetch(self):
-        """自动获取 - 自动检测选中的游戏"""
-        from fetchers.cache_reader import CacheReader
-        from fetchers.url_parser import URLParser
-
+        """自动获取：URL 提取与拉取都在工作线程，主线程不扫缓存"""
         selected_id = self.auto_game_combo.currentData()
         if selected_id == "all":
             selected = ["genshin", "starrail", "zzz", "wutheringwaves"]
@@ -300,67 +360,24 @@ class ImportWidget(QWidget):
             selected = [selected_id]
 
         self._set_fetching(True)
-        game_label = self.auto_game_combo.currentText()
-        self._log(f"开始自动检测: {game_label}...")
-
-        cache = CacheReader()
-        detected_games = []
-
-        # 只扫描选中的游戏
-        for game_id in selected:
-            try:
-                # 鸣潮需要专用的日志解密
-                if game_id == "wutheringwaves":
-                    from fetchers.kuro.wutheringwaves import WutheringWavesFetcher
-                    fetcher = WutheringWavesFetcher()
-                    url = fetcher._get_url_from_log()
-                else:
-                    url = cache.extract_url(game_id)
-                if url:
-                    detected_games.append((game_id, url))
-            except Exception as e:
-                logger.error("扫描 %s 失败: %s", GAME_NAMES.get(game_id, game_id), e)
-                self._log(f"  ✗ 扫描 {GAME_NAMES.get(game_id, game_id)} 失败: {str(e)}")
-
-        if not detected_games:
-            logger.warning("自动扫描未找到任何游戏记录")
-            self._log("\n未找到任何游戏记录！")
-            self._log("请确保：")
-            self._log("1. 已打开游戏")
-            self._log("2. 进入抽卡/跃迁记录页面")
-            self._log("3. 等待记录加载完成")
-            self._log("4. 切回本程序重试")
-            self._set_fetching(False)
-            QMessageBox.information(self, "提示",
-                "未找到任何游戏记录。\n\n"
-                "请确保：\n"
-                "1. 已打开游戏\n"
-                "2. 进入抽卡/跃迁记录页面\n"
-                "3. 等待记录加载完成\n"
-                "4. 切回本程序重试\n\n"
-                "如果还是找不到，请尝试手动粘贴URL。")
-            return
-
-        self._log(f"\n共检测到 {len(detected_games)} 个游戏，开始获取记录...")
-
-        # 保存检测到的URL供导出使用
-        self._detected_urls = detected_games
-
-        # 依次获取每个游戏的记录
-        self._detected_games = detected_games
+        self._log(f"开始自动检测: {self.auto_game_combo.currentText()}...")
+        self._log("（后台提取 URL 并获取，可随时取消）")
+        self._detected_urls = []
+        self._detected_games = [(gid, None) for gid in selected]
         self._current_fetch_index = 0
+        self._auto_mode = True
         self._fetch_next_game()
 
     def _fetch_next_game(self):
-        """获取下一个游戏的记录"""
         if self._current_fetch_index >= len(self._detected_games):
             self._set_fetching(False)
+            self._auto_mode = False
             self._log("\n所有游戏获取完成！")
-            # 显示检测到的URL
-            if hasattr(self, '_detected_urls') and self._detected_urls:
+            if getattr(self, "_detected_urls", None):
                 self._log("\n=== 检测到的URL ===")
                 for game_id, url in self._detected_urls:
-                    self._log(f"  [{GAME_NAMES.get(game_id, game_id)}] {url}")
+                    if url:
+                        self._log(f"  [{GAME_NAMES.get(game_id, game_id)}] {url}")
                 self._log("====================")
             self.main_window.refresh_all()
             QMessageBox.information(self, "完成", "所有游戏记录获取完成！")
@@ -369,26 +386,30 @@ class ImportWidget(QWidget):
         game, url = self._detected_games[self._current_fetch_index]
         self._log(f"\n正在获取 {GAME_NAMES.get(game, game)}...")
 
-        # 自动创建或获取账号
-        account = self._auto_detect_account(game, url)
+        account = self._auto_detect_account(game, url or "")
         if not account:
             self._log(f"  跳过 {GAME_NAMES.get(game, game)}")
             self._current_fetch_index += 1
             self._fetch_next_game()
             return
 
-        # 切换到当前游戏
+        if not account.nickname and account.uid:
+            account.nickname = self._generate_nickname(account.game, account.uid)
+            self.db.update_account(account)
+
         self.main_window._on_game_changed(game)
         self.main_window.set_account(account)
 
-        # 获取最新记录时间，用于增量获取
         latest_time = None
-        records = self.db.get_records(account.id)
-        if records:
-            latest_time = max(r.time for r in records if r.time)
+        existing = self.db.get_records(account.id)
+        if existing:
+            latest_time = max(r.time for r in existing if r.time)
             self._log(f"  已有记录，从 {latest_time} 开始增量获取")
 
-        self.fetch_thread = FetchThread(game, url=url, account_id=account.id, latest_time=latest_time)
+        self.fetch_thread = FetchThread(
+            game, url=url, account_id=account.id,
+            latest_time=latest_time, account=account,
+        )
         self.fetch_thread.progress.connect(self._on_progress)
         self.fetch_thread.finished.connect(self._on_game_fetch_done)
         self.fetch_thread.error.connect(self._on_game_fetch_error)
@@ -472,60 +493,24 @@ class ImportWidget(QWidget):
         self._log(f"  自动创建账号: {uid or '(待确认)'} ({region})")
         return account
 
-    def _on_game_fetch_done(self, records):
-        """单个游戏获取完成"""
+    def _on_game_fetch_done(self, result):
+        """单个游戏获取+入库完成"""
         try:
-            if not records:
+            if not isinstance(result, dict):
+                result = {"total": 0, "new_count": 0, "skipped_count": 0}
+            if result.get("total", 0) == 0:
                 self._log("  未获取到记录")
             else:
-                account = self.main_window.get_current_account()
-                if account:
-                    # 从fetcher获取检测到的UID
-                    detected_uid = getattr(self.fetch_thread, 'detected_uid', '')
-                    if detected_uid and detected_uid != account.uid:
-                        self._log(f"  检测到UID: {detected_uid}")
-                        account.uid = detected_uid
-
-                    # 如果还是没有UID，尝试从记录中提取
-                    if not account.uid:
-                        from fetchers.mihoyo.api import MihoyoAPI
-                        uid = MihoyoAPI.get_uid_from_records(records)
-                        if uid:
-                            account.uid = uid
-                            self._log(f"  从记录中提取UID: {uid}")
-
-                    # 生成默认昵称
-                    if not account.nickname and account.uid:
-                        account.nickname = self._generate_nickname(account.game, account.uid)
-
-                    self.db.update_account(account)
-                    self.main_window.set_account(account)
-
-                    # 转换为GachaRecord对象
-                    gacha_records = []
-                    for raw in records:
-                        if isinstance(raw, dict):
-                            record = MihoyoAPI.parse_record(raw, account.game, account.id)
-                            gacha_records.append(record)
-                        else:
-                            gacha_records.append(raw)
-
-                    new_count = self.db.add_records(gacha_records)
-                    skipped_count = len(records) - new_count
-
-                    if new_count > 0:
-                        self._log(f"  成功导入 {new_count} 条新记录")
-                        # 计算保底数
-                        self._log("  正在计算保底数...")
-                        self.db.calculate_pity_counts(account.id)
-                        self._log("  保底数计算完成")
-                    if skipped_count > 0:
-                        self._log(f"  跳过 {skipped_count} 条重复记录")
+                self._log(
+                    f"  新记录 {result.get('new_count', 0)} 条，"
+                    f"重复 {result.get('skipped_count', 0)} 条"
+                )
+                if result.get("detected_uid"):
+                    self._log(f"  UID: {result['detected_uid']}")
         except Exception as e:
             logger.error("处理记录时出错: %s", e)
             self._log(f"  ✗ 处理记录时出错: {e}")
 
-        # 继续获取下一个游戏
         self._current_fetch_index += 1
         self._fetch_next_game()
 
@@ -534,6 +519,7 @@ class ImportWidget(QWidget):
         logger.error("获取失败: %s", error_msg)
         self._log(f"  ✗ 获取失败: {error_msg}")
         if "取消" in error_msg:
+            self._auto_mode = False
             self._set_fetching(False)
             self._log("已取消获取")
             return
@@ -585,77 +571,45 @@ class ImportWidget(QWidget):
             latest_time = max(r.time for r in records if r.time)
             self._log(f"已有记录，从 {latest_time} 开始增量获取")
 
-        self.fetch_thread = FetchThread(game, url=url, account_id=account.id, latest_time=latest_time)
+        self.fetch_thread = FetchThread(
+            game, url=url, account_id=account.id,
+            latest_time=latest_time, account=account,
+        )
         self.fetch_thread.progress.connect(self._on_progress)
         self.fetch_thread.finished.connect(self._on_fetch_done)
         self.fetch_thread.error.connect(self._on_fetch_error)
         self.fetch_thread.start()
 
-    def _on_progress(self, message, progress):
-        self.status_label.setText(message)
-        if progress > 0:
-            self.progress_bar.setValue(int(progress * 100))
-        self._log(message)
-
-    def _on_fetch_done(self, records):
-        """获取完成"""
+    def _on_fetch_done(self, result):
+        """URL 获取完成"""
         self._set_fetching(False)
-
-        if not records:
+        if not isinstance(result, dict):
+            result = {}
+        total = result.get("total", 0)
+        if total == 0:
             self._log("未获取到任何记录")
             QMessageBox.information(self, "提示", "未获取到任何记录")
             return
 
+        self._log(
+            f"导入完成：新记录 {result.get('new_count', 0)} 条，"
+            f"重复 {result.get('skipped_count', 0)} 条"
+        )
+        if result.get("detected_uid"):
+            self._log(f"UID: {result['detected_uid']}")
+
         account = self.main_window.get_current_account()
-        if account:
-            # 从fetcher获取检测到的UID
-            detected_uid = getattr(self.fetch_thread, 'detected_uid', '')
-            if detected_uid and detected_uid != account.uid:
-                self._log(f"检测到UID: {detected_uid}")
-                account.uid = detected_uid
-
-            if not account.uid:
-                from fetchers.mihoyo.api import MihoyoAPI
-                uid = MihoyoAPI.get_uid_from_records(records)
-                if uid:
-                    account.uid = uid
-                    self._log(f"从记录中提取UID: {uid}")
-
-            # 生成默认昵称
-            if not account.nickname and account.uid:
-                account.nickname = self._generate_nickname(account.game, account.uid)
-
+        if account and not account.nickname and account.uid:
+            account.nickname = self._generate_nickname(account.game, account.uid)
             self.db.update_account(account)
-            self.main_window.set_account(account)
 
-            # 转换为GachaRecord对象
-            gacha_records = []
-            for raw in records:
-                if isinstance(raw, dict):
-                    record = MihoyoAPI.parse_record(raw, account.game, account.id)
-                    gacha_records.append(record)
-                else:
-                    gacha_records.append(raw)
-
-            new_count = self.db.add_records(gacha_records)
-            skipped_count = len(records) - new_count
-
-            if new_count > 0:
-                self._log(f"成功导入 {new_count} 条新记录")
-                # 计算保底数
-                self._log("正在计算保底数...")
-                self.db.calculate_pity_counts(account.id)
-                self._log("保底数计算完成")
-            if skipped_count > 0:
-                self._log(f"跳过 {skipped_count} 条重复记录")
-
-            QMessageBox.information(
-                self, "导入完成",
-                f"新记录: {new_count} 条\n重复记录: {skipped_count} 条\n总计获取: {len(records)} 条"
-            )
-            self.main_window.refresh_all()
-        else:
-            self._log("错误：未找到账号")
+        QMessageBox.information(
+            self, "导入完成",
+            f"新记录: {result.get('new_count', 0)} 条\n"
+            f"重复记录: {result.get('skipped_count', 0)} 条\n"
+            f"总计获取: {total} 条"
+        )
+        self.main_window.refresh_all()
 
     def _on_fetch_error(self, error_msg):
         self._set_fetching(False)
@@ -673,22 +627,29 @@ class ImportWidget(QWidget):
             QMessageBox.critical(self, "获取失败", error_msg)
 
     def _cancel_fetch(self):
-        """取消当前获取"""
+        """取消当前获取：置标志并关闭 HTTP Session 打断阻塞请求"""
+        self._auto_mode = False
         if self.fetch_thread and self.fetch_thread.isRunning():
             self.fetch_thread.cancel()
-            # 杀掉代理子进程（如果有）
-            try:
-                fetcher = getattr(self.fetch_thread, '_fetcher_instance', None)
-                if fetcher:
-                    proc = getattr(fetcher, '_proxy_proc', None)
-                    if proc and proc.poll() is None:
-                        proc.kill()
-            except Exception as e:
-                logger.debug("清理代理进程失败: %s", e)
-                pass
             self.cancel_btn.setEnabled(False)
             self.cancel_btn.setText("取消中...")
             self._log("正在取消获取...")
+            # 给线程一点时间退出；不阻塞 UI
+            QTimer.singleShot(8000, self._on_cancel_timeout)
+
+    def _on_cancel_timeout(self):
+        if self.fetch_thread and self.fetch_thread.isRunning():
+            self._log("取消超时，线程仍在退出中…")
+            self.cancel_btn.setEnabled(True)
+            self.cancel_btn.setText("取消获取")
+
+    def _on_progress(self, message, progress):
+        self.status_label.setText(message)
+        if progress > 0:
+            self.progress_bar.setValue(int(progress * 100))
+        # 降低日志刷屏，避免 QTextEdit 过多导致卡顿
+        if progress <= 0 or progress >= 0.9 or "完成" in message or "失败" in message or "取消" in message:
+            self._log(message)
 
     def _set_fetching(self, fetching):
         self.auto_fetch_btn.setEnabled(not fetching)
@@ -817,32 +778,44 @@ class ImportWidget(QWidget):
                     else:
                         data = data.get("list", data.get("records", data.get("data", [])))
 
-                for item in data:
+                for idx, item in enumerate(data):
+                    g = item.get("game", game)
+                    pt = item.get("pool_type", item.get("gacha_type", "character"))
+                    t = item.get("time", "")
+                    name = item.get("item_name", item.get("name", "未知"))
                     records.append(GachaRecord(
                         account_id=account_id,
-                        game=item.get("game", game),
-                        pool_type=item.get("pool_type", item.get("gacha_type", "character")),
-                        item_name=item.get("item_name", item.get("name", "未知")),
+                        game=g,
+                        pool_type=pt,
+                        pool_name=item.get("pool_name", ""),
+                        item_id=item.get("item_id") or item.get("id")
+                                  or make_item_id(g, pt, t, name, idx),
+                        item_name=name,
                         item_type=item.get("item_type", item.get("type", "")),
                         rarity=int(item.get("rarity", item.get("rank_type", 3))),
                         is_featured=bool(item.get("is_featured", item.get("is_up", False))),
-                        time=item.get("time", ""),
+                        time=t,
                         pity_count=int(item.get("pity_count", 0)),
                     ))
 
         elif file_type == "csv":
             with open(filepath, "r", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
-                for row in reader:
+                for idx, row in enumerate(reader):
+                    g = row.get("game", game)
+                    pt = row.get("pool_type", "character")
+                    t = row.get("time", "")
+                    name = row.get("item_name", row.get("name", "未知"))
                     records.append(GachaRecord(
                         account_id=account_id,
-                        game=row.get("game", game),
-                        pool_type=row.get("pool_type", "character"),
-                        item_name=row.get("item_name", row.get("name", "未知")),
+                        game=g,
+                        pool_type=pt,
+                        item_id=row.get("item_id") or make_item_id(g, pt, t, name, idx),
+                        item_name=name,
                         item_type=row.get("item_type", ""),
                         rarity=int(row.get("rarity", 3)),
                         is_featured=row.get("is_featured", "").lower() in ("true", "1", "是"),
-                        time=row.get("time", ""),
+                        time=t,
                     ))
 
         elif file_type == "excel":
@@ -851,17 +824,22 @@ class ImportWidget(QWidget):
                 wb = openpyxl.load_workbook(filepath, read_only=True)
                 ws = wb.active
                 headers = [cell.value for cell in next(ws.iter_rows(max_row=1))]
-                for row in ws.iter_rows(min_row=2, values_only=True):
+                for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
                     item = dict(zip(headers, row))
+                    g = str(item.get("game", game))
+                    pt = str(item.get("pool_type", "character"))
+                    t = str(item.get("time", ""))
+                    name = str(item.get("item_name", item.get("name", "未知")))
                     records.append(GachaRecord(
                         account_id=account_id,
-                        game=str(item.get("game", game)),
-                        pool_type=str(item.get("pool_type", "character")),
-                        item_name=str(item.get("item_name", item.get("name", "未知"))),
+                        game=g,
+                        pool_type=pt,
+                        item_id=str(item.get("item_id") or make_item_id(g, pt, t, name, idx)),
+                        item_name=name,
                         item_type=str(item.get("item_type", "")),
                         rarity=int(item.get("rarity", 3)),
                         is_featured=bool(item.get("is_featured", False)),
-                        time=str(item.get("time", "")),
+                        time=t,
                     ))
             except ImportError:
                 raise RuntimeError("需要安装 openpyxl 才能导入 Excel 文件")
@@ -874,13 +852,17 @@ class ImportWidget(QWidget):
         格式: {"info": {...}, "data": {"timestamp": {"c": [[name, rarity, is_featured], ...], "p": "卡池名"}, ...}}
         """
         from datetime import datetime
-        from core.models import get_max_rarity
+        from core.models import get_pool_names
+
+        pool_name_map = {
+            display: pool_type
+            for pool_type, display in get_pool_names(game)
+        }
 
         records = []
-        uid = str(data.get("info", {}).get("uid", ""))
+        seq_counter = {}
 
         for ts_str, entry in data.get("data", {}).items():
-            # 解析时间戳
             try:
                 ts = int(ts_str)
                 time_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
@@ -889,18 +871,19 @@ class ImportWidget(QWidget):
 
             pool_name = entry.get("p", "")
             chars = entry.get("c", [])
+            pool_type = pool_name_map.get(pool_name, "character")
 
-            pool_type = "character"
-
-            for idx, char in enumerate(chars):
+            for char in chars:
                 if len(char) < 2:
                     continue
                 char_name = char[0]
                 rarity = int(char[1])
                 is_featured = bool(char[2]) if len(char) > 2 else False
 
-                # 生成唯一 item_id: 角色名_时间（与游戏API获取格式一致，避免重复）
-                item_id = f"{char_name}_{time_str}"
+                key = f"{pool_type}|{time_str}"
+                seq = seq_counter.get(key, 0)
+                seq_counter[key] = seq + 1
+                item_id = make_item_id(game, pool_type, time_str, char_name, seq, pool_name)
 
                 records.append(GachaRecord(
                     account_id=account_id,

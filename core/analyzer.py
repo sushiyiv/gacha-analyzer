@@ -1,10 +1,8 @@
 """抽卡分析引擎 - 保底分析、统计分析、运势评分"""
 
-import math
 from collections import Counter, defaultdict
-from datetime import datetime
-from typing import List, Dict, Optional
-from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, Rarity, get_max_rarity
+from typing import List, Dict
+from core.models import GachaRecord, BannerConfig, BANNER_CONFIGS, get_max_rarity
 
 
 def _record_time_key(record):
@@ -15,7 +13,7 @@ def _record_time_key(record):
 
 
 def get_rate_at_pull(config: BannerConfig, pull_number: int) -> float:
-    """计算第N抽出5星的概率"""
+    """计算本周期第N抽出5星的概率（pull_number 从 1 起）"""
     if pull_number >= config.hard_pity:
         return 1.0
     if pull_number >= config.soft_pity_start:
@@ -25,23 +23,35 @@ def get_rate_at_pull(config: BannerConfig, pull_number: int) -> float:
 
 
 def get_expected_pulls(config: BannerConfig, current_pity: int) -> float:
-    """计算期望抽数（到下一个5星）"""
+    """计算期望抽数（到下一个5星）。
+
+    current_pity 是距上次五星已抽次数；下一抽的编号为 current_pity + 1，
+    与 core.simulator.PityState.pull_once 中先 +1 再取概率的约定一致。
+    """
+    if current_pity >= config.hard_pity:
+        return 1.0
     expected = 0.0
     cumulative_no_5star = 1.0
-    for i in range(current_pity, config.hard_pity + 1):
+    first_pull = current_pity + 1
+    for i in range(first_pull, config.hard_pity + 1):
         rate = get_rate_at_pull(config, i)
-        pulls_from_now = i - current_pity + 1
+        pulls_from_now = i - current_pity
         prob_this_pull = cumulative_no_5star * rate
         expected += pulls_from_now * prob_this_pull
         cumulative_no_5star *= (1 - rate)
-    remaining = config.hard_pity - current_pity
-    expected += (remaining + 1) * cumulative_no_5star
+        if cumulative_no_5star == 0.0:
+            break
+    # 循环已覆盖硬保底（rate=1），剩余未出概率为 0
     return expected
 
 
 def get_featured_expected(config: BannerConfig, current_pity: int,
                           is_guaranteed: bool) -> float:
-    """计算抽到限定5星的期望抽数"""
+    """计算抽到限定5星的期望抽数。
+
+    小保底（赢率 p）下：E + (1-p)*E = E*(2-p)。
+    歪一次后进入大保底，下一轮期望与普通出金相同。
+    """
     expected_5star = get_expected_pulls(config, current_pity)
     if not config.has_guarantee:
         return expected_5star
@@ -49,21 +59,20 @@ def get_featured_expected(config: BannerConfig, current_pity: int,
         return expected_5star
     if config.featured_guarantee_rate >= 1.0:
         return expected_5star  # 100% UP，不会歪
-    # 50/50: 概率歪，歪了要再抽一轮
-    # 期望 = expected * (1 / featured_rate)
-    return expected_5star / config.featured_guarantee_rate
+    return expected_5star * (2.0 - config.featured_guarantee_rate)
 
 
 def get_pull_probability(config: BannerConfig, current_pity: int,
                          target_pulls: int) -> float:
-    """计算N抽内出5星的概率"""
-    cumulative = 1.0
+    """计算从当前状态起 N 抽内出5星的概率"""
     no_5star = 1.0
-    for i in range(current_pity, current_pity + target_pulls):
-        if i > config.hard_pity:
-            return 1.0
+    first_pull = current_pity + 1
+    last_pull = current_pity + target_pulls
+    for i in range(first_pull, last_pull + 1):
         rate = get_rate_at_pull(config, i)
         no_5star *= (1 - rate)
+        if no_5star == 0.0:
+            return 1.0
     return 1 - no_5star
 
 
@@ -134,7 +143,7 @@ class PityAnalyzer:
             "current_pity": current_pity,
             "is_guaranteed": is_guaranteed,
             "pulls_to_hard": self.config.hard_pity - current_pity,
-            "current_rate": get_rate_at_pull(self.config, current_pity),
+            "current_rate": get_rate_at_pull(self.config, current_pity + 1),
             "expected_to_5star": round(expected_to_5star, 2),
             "expected_to_featured": round(expected_to_featured, 2),
             "prob_table": prob_table,
@@ -156,9 +165,10 @@ class PityAnalyzer:
         }
 
     def _get_rate_curve(self, current_pity: int) -> List[Dict]:
-        """获取从当前抽数到硬保底的概率曲线"""
+        """从下一抽到硬保底的概率曲线；pull 为本周期抽数编号（从 1 起）。"""
         curve = []
-        for i in range(current_pity, self.config.hard_pity + 1):
+        first_pull = current_pity + 1
+        for i in range(first_pull, self.config.hard_pity + 1):
             rate = get_rate_at_pull(self.config, i)
             curve.append({"pull": i, "pulls_from_now": i - current_pity, "rate": rate})
         return curve
@@ -240,7 +250,8 @@ class StatsAnalyzer:
 
         avg = sum(distribution) / len(distribution)
         config = BANNER_CONFIGS.get((self.records[0].game, "character"))
-        theoretical_avg = 62.5 if not config else 1 / config.base_rate_5star
+        # 软保底下期望约 62 抽，不能用 1/base_rate（那会得到 ~167）
+        theoretical_avg = get_expected_pulls(config, 0) if config else 62.5
 
         if avg <= theoretical_avg * 0.6:
             rating, desc = "SSR 欧皇", "你的运气简直逆天！"

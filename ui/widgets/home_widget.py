@@ -477,7 +477,7 @@ class HomeWidget(QWidget):
         # 有改动，重建标签页（暂停刷新避免闪烁）
         self.setUpdatesEnabled(False)
         self._current_game = None
-        self.refresh()
+        self.refresh(force=True)
 
         # 只有当前卡池被隐藏才跳"全部"，否则留在当前卡池
         if current_pool_type is not None and current_pool_type not in new_visible:
@@ -702,21 +702,32 @@ class HomeWidget(QWidget):
                 selected = [max_rarity]
             self.config.set(f"star_filter.{game}", selected)
             self.config.save()
-            self.refresh()
+            self.refresh(force=True)
 
-    def refresh(self):
-        """刷新页面"""
+    def refresh(self, force=False):
+        """刷新页面；数据版本未变时跳过全量重刷"""
+        if force:
+            self._last_refresh_key = None
         game = self.main_window.get_current_game()
+        account = self.main_window.get_current_account()
+        version = self.db.data_version
+        tab_idx = self.pool_tabs.currentIndex() if hasattr(self, "pool_tabs") else -1
+        cache_key = (
+            game,
+            account.id if account else None,
+            version,
+            getattr(self, "_show_uid", False),
+            tab_idx,
+        )
+        if getattr(self, "_last_refresh_key", None) == cache_key and self._tabs:
+            return
 
-        # 游戏切换时才重建标签页
         need_rebuild = game != self._current_game
         if need_rebuild:
             self.setUpdatesEnabled(False)
 
         try:
-            # 先获取账号（重建标签页时需要知道有哪些独立寻访）
             accounts = self.db.get_accounts(game)
-            account = self.main_window.get_current_account()
             if not account and accounts:
                 self.main_window.set_account(accounts[0])
                 account = accounts[0]
@@ -725,26 +736,29 @@ class HomeWidget(QWidget):
                 self._current_game = game
                 self._rebuild_tabs(game, account)
 
-            # 刷新账号列表
-            self.account_combo.blockSignals(True)
-            self.account_combo.clear()
-            accounts = self.db.get_accounts(game)
-            current_account = self.main_window.get_current_account()
-            current_index = 0
-            for i, acc in enumerate(accounts):
-                display = acc.nickname if acc.nickname else acc.uid
-                if self._show_uid and acc.uid:
-                    self.account_combo.addItem(f"{display} ({acc.uid})", acc.id)
-                else:
-                    self.account_combo.addItem(display, acc.id)
-                if current_account and acc.id == current_account.id:
-                    current_index = i
-            if accounts:
-                self.account_combo.setCurrentIndex(current_index)
-            self.account_combo.blockSignals(False)
+            # 账号列表仅在账号集合变化时重建
+            acc_sig = tuple((a.id, a.uid, a.nickname) for a in accounts)
+            if getattr(self, "_last_acc_sig", None) != acc_sig:
+                self.account_combo.blockSignals(True)
+                self.account_combo.clear()
+                current_account = self.main_window.get_current_account()
+                current_index = 0
+                for i, acc in enumerate(accounts):
+                    display = acc.nickname if acc.nickname else acc.uid
+                    if self._show_uid and acc.uid:
+                        self.account_combo.addItem(f"{display} ({acc.uid})", acc.id)
+                    else:
+                        self.account_combo.addItem(display, acc.id)
+                    if current_account and acc.id == current_account.id:
+                        current_index = i
+                if accounts:
+                    self.account_combo.setCurrentIndex(current_index)
+                self.account_combo.blockSignals(False)
+                self._last_acc_sig = acc_sig
 
             if not accounts:
                 self._clear_stats()
+                self._last_refresh_key = cache_key
                 return
 
             account = self.main_window.get_current_account()
@@ -752,32 +766,35 @@ class HomeWidget(QWidget):
                 self.main_window.set_account(accounts[0])
                 account = accounts[0]
 
-            # 获取所有记录
             all_records = self.db.get_records(account.id)
             if not all_records:
                 self._clear_stats()
+                self._last_refresh_key = cache_key
                 return
 
-            # 更新各标签页
             max_rarity = get_max_rarity(game)
             star_filter = self._get_star_filter(game)
-            for tab in self._tabs:
-                pool_type = tab._pool_type
-                pool_name_filter = getattr(tab, '_pool_name_filter', None)
-                if pool_type is None:
-                    records = all_records
-                elif pool_name_filter:
-                    records = [r for r in all_records if r.pool_type == pool_type and r.pool_name == pool_name_filter]
-                else:
-                    records = [r for r in all_records if r.pool_type == pool_type]
+            self.setUpdatesEnabled(False)
+            try:
+                for tab in self._tabs:
+                    pool_type = tab._pool_type
+                    pool_name_filter = getattr(tab, '_pool_name_filter', None)
+                    if pool_type is None:
+                        records = all_records
+                    elif pool_name_filter:
+                        records = [r for r in all_records if r.pool_type == pool_type and r.pool_name == pool_name_filter]
+                    else:
+                        records = [r for r in all_records if r.pool_type == pool_type]
 
-                # 检查是否为卡片模式
-                cards_container = getattr(tab, '_cards_container', None)
-                if cards_container:
-                    self._refresh_cards(tab, records, account, game, max_rarity, star_filter)
-                else:
-                    self._update_tab_stats(tab, records, account, game)
+                    cards_container = getattr(tab, '_cards_container', None)
+                    if cards_container:
+                        self._refresh_cards(tab, records, account, game, max_rarity, star_filter)
+                    else:
+                        self._update_tab_stats(tab, records, account, game)
+            finally:
+                self.setUpdatesEnabled(True)
 
+            self._last_refresh_key = cache_key
         finally:
             if need_rebuild:
                 self.setUpdatesEnabled(True)

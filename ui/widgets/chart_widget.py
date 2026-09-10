@@ -70,7 +70,7 @@ class ChartWidget(QWidget):
 
         header.addWidget(QLabel("卡池:"))
         self.pool_combo = QComboBox()
-        self.pool_combo.currentIndexChanged.connect(lambda: self.refresh())
+        self.pool_combo.currentIndexChanged.connect(lambda: self._force_refresh())
         header.addWidget(self.pool_combo)
         self._last_game = None
         layout.addLayout(header)
@@ -86,6 +86,10 @@ class ChartWidget(QWidget):
         scroll.setWidget(self.scroll_widget)
         layout.addWidget(scroll)
 
+    def _force_refresh(self):
+        self._last_refresh_key = None
+        self.refresh()
+
     def refresh(self):
         account = self.main_window.get_current_account()
         if not account:
@@ -93,7 +97,6 @@ class ChartWidget(QWidget):
 
         game = self.main_window.get_current_game()
 
-        # 游戏切换时更新卡池下拉框
         if game != self._last_game:
             self._last_game = game
             self.pool_combo.blockSignals(True)
@@ -107,6 +110,10 @@ class ChartWidget(QWidget):
             self.pool_combo.blockSignals(False)
 
         pool_type = self.pool_combo.currentData()
+        cache_key = (game, account.id, pool_type, self.db.data_version)
+        if getattr(self, "_last_refresh_key", None) == cache_key:
+            return
+
         records = self.db.get_records(account.id, pool_type)
 
         # 清除旧图表
@@ -146,6 +153,7 @@ class ChartWidget(QWidget):
         self._add_featured_chart(records, accent, game)
 
         self.chart_layout.addStretch()
+        self._last_refresh_key = cache_key
 
     def _create_canvas(self, title_text, figsize=(10, 4)):
         """创建图表画布"""

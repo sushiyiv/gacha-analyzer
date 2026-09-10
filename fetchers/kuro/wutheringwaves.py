@@ -149,13 +149,15 @@ class WutheringWavesFetcher(BaseFetcher):
             pn = CARD_POOL_TYPE_MAP.get(pt, "character")
             self._report_progress("获取 %s (%d/%d)..." % (pn, idx+1, len(pool_types)), (idx+0.5)/len(pool_types))
             try:
-                resp = requests.post(self.API_URL, json={
+                resp = self.session.post(self.API_URL, json={
                     "playerId": params["player_id"], "serverId": params.get("svr_id", ""),
                     "cardPoolId": params.get("resources_id", ""), "cardPoolType": pt,
                     "languageCode": params.get("lang", "zh-Hans"), "recordId": params.get("record_id", ""),
-                }, headers={"Content-Type": "application/json"}, timeout=15)
+                }, headers={"Content-Type": "application/json"}, timeout=(5, 15))
                 data = resp.json()
             except Exception as e:
+                if self._aborted or (self._cancel_check and self._cancel_check()):
+                    raise FetcherError("用户取消")
                 raise FetcherError("请求失败: %s" % str(e))
             if data.get("code") != 0:
                 logger.warning("%s 获取失败: %s" % (pn, data.get("message", "")))
@@ -167,6 +169,9 @@ class WutheringWavesFetcher(BaseFetcher):
         result = []
         seen_ids = {}
         for raw in all_records:
+            rec_time = raw.get("time", "")
+            if latest_time and rec_time and rec_time <= latest_time:
+                continue
             pt_name = raw.get("_pool_type", "character")
             cpn = raw.get("cardPoolType", "")
             if cpn in POOL_NAME_MAP:

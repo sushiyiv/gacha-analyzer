@@ -46,7 +46,7 @@ class StatsWidget(QWidget):
 
         header.addWidget(QLabel("卡池:"))
         self.pool_combo = QComboBox()
-        self.pool_combo.currentIndexChanged.connect(lambda: self.refresh())
+        self.pool_combo.currentIndexChanged.connect(lambda: self._force_refresh())
         header.addWidget(self.pool_combo)
         main_layout.addLayout(header)
 
@@ -291,15 +291,21 @@ class StatsWidget(QWidget):
             self.pool_combo.setCurrentIndex(idx)
         self.pool_combo.blockSignals(False)
 
+    def _force_refresh(self):
+        self._last_refresh_key = None
+        self.refresh()
+
     def refresh(self):
         account = self.main_window.get_current_account()
         if not account:
             return
 
         game = self.main_window.get_current_game()
-
         self._update_pool_combo(game)
         pool_type = self.pool_combo.currentData()
+        cache_key = (game, account.id, pool_type, self.db.data_version)
+        if getattr(self, "_last_refresh_key", None) == cache_key:
+            return
 
         if pool_type is None:
             records = self.db.get_records(account.id)
@@ -308,9 +314,9 @@ class StatsWidget(QWidget):
 
         if not records:
             self.pity_summary.setText("暂无数据，请先导入抽卡记录")
+            self._last_refresh_key = cache_key
             return
 
-        # 保底分析（全部卡池时跳过）
         if pool_type:
             try:
                 pool_name = records[0].pool_name if records else ""
@@ -324,14 +330,12 @@ class StatsWidget(QWidget):
             self.pity_summary.setText("全部卡池综合统计（保底分析请切换到具体卡池）")
             self.pity_table.setRowCount(0)
 
-        # 统计分析
         stats = StatsAnalyzer(records, game)
         self._update_featured(stats, game)
         self._update_pulls(records, game)
         self._update_prob(game, pool_type, records)
-
-        # 更新卡池抽数显示
         self._update_pool_pull_counts(account, game)
+        self._last_refresh_key = cache_key
 
     def _update_pity(self, pity, game):
         """更新保底信息"""

@@ -1,22 +1,12 @@
-# ==============================================================================
-# 文件: fetchers/__init__.py
-# 说明: 数据获取模块的包初始化文件
-#       负责导入所有游戏的获取器类并构建获取器注册表(FETCHER_MAP)
-#       上层模块通过 get_fetcher(game) 函数获取指定游戏的获取器实例
-#       支持的游戏: genshin(原神), starrail(星铁), zzz(绝区零),
-#                  wutheringwaves(鸣潮)
-# ==============================================================================
 
 """数据获取模块 - 获取器注册表"""
 
-# ==================== 获取器类导入 ====================
 
 from fetchers.mihoyo.genshin import GenshinFetcher
 from fetchers.mihoyo.starrail import StarRailFetcher
 from fetchers.mihoyo.zzz import ZZZFetcher
 from fetchers.kuro.wutheringwaves import WutheringWavesFetcher
 
-# ==================== 获取器注册表 ====================
 
 FETCHER_MAP = {
     "genshin": GenshinFetcher,
@@ -25,7 +15,6 @@ FETCHER_MAP = {
     "wutheringwaves": WutheringWavesFetcher,
 }
 
-# ==================== 获取器工厂函数 ====================
 
 
 def get_fetcher(game: str):
@@ -49,11 +38,8 @@ def get_fetcher(game: str):
         ValueError: 当传入的游戏标识不在 FETCHER_MAP 中时抛出
     """
     cls = FETCHER_MAP.get(game)
-    # 从注册表中查找对应游戏的获取器类
-    # 如果游戏标识不存在，返回None
 
     if not cls:
         raise ValueError(f"不支持的游戏: {game}")
-        # 抛出ValueError，告知调用者该游戏不受支持
 
-    return cls()  # 创建并返回获取器类的实例(无参构造)
+    return cls()

@@ -4,17 +4,19 @@ import sys
 import os
 import logging
 
-# 确保项目根目录在 Python 路径中，并切换工作目录
+# 确保项目根目录在 Python 路径中
 if getattr(sys, 'frozen', False):
-    # PyInstaller exe 模式
     _exe_dir = os.path.dirname(sys.executable)
-    # onedir 模式下数据文件在 _internal 子目录中
+    # 应用资源在 _internal；日志/用户数据放 exe 同级 data/
     if os.path.exists(os.path.join(_exe_dir, "_internal", "config.yaml")):
         _project_dir = os.path.join(_exe_dir, "_internal")
+        _data_root = _exe_dir
     else:
         _project_dir = _exe_dir
+        _data_root = _exe_dir
 else:
     _project_dir = os.path.dirname(os.path.abspath(__file__))
+    _data_root = _project_dir
 sys.path.insert(0, _project_dir)
 os.chdir(_project_dir)
 
@@ -22,7 +24,7 @@ from core.logging_config import setup_logging
 
 # 初始化日志：控制台 + 文件
 setup_logging(
-    log_dir=os.path.join(_project_dir, "data", "logs"),
+    log_dir=os.path.join(_data_root, "data", "logs"),
     level=logging.INFO,
     app_name="qian",
 )
@@ -117,7 +119,7 @@ def main():
     app.setFont(font)
 
     app.setApplicationName("穷观阵")
-    app.setApplicationVersion("1.2.2")
+    app.setApplicationVersion("1.2.3")
     app.setOrganizationName("QianGuanZhen")
 
     window = MainWindow()

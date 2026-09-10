@@ -1,4 +1,28 @@
-﻿# 更新日志
+# 更新日志
+
+## [1.2.3] - 2026-09-10
+### Fixed
+- 修正保底分析 `current_rate` / 概率曲线 off-by-one（下一抽编号应为 `current_pity + 1`）
+- 修正限定期望公式：小保底赢率 p 下为 `E*(2-p)`，武器池 75/25 不再用错误的 `E/p`
+- 运势评分理论期望改用含软保底的解析期望，不再用 `1/base_rate`
+- 通用 JSON/CSV/Excel 导入为每条记录生成稳定 `item_id`，避免 UNIQUE 约束只入库 1 条
+- 小黑盒导入按卡池名映射真实 `pool_type`，同秒多条用序号区分 `item_id`
+- 导出 JSON 补充 `item_id`，支持安全回导去重
+- 数据库备份改用 `sqlite3.Connection.backup()`，WAL 模式下不再丢最近提交
+- 恢复时清理残留 `-wal` / `-shm` 文件
+- 打包遗漏 QSS 导致侧栏未选中项几乎不可见
+- 打包版用户数据改存 exe 同级 `data/`，`build.py` 重建时自动保留
+- 真增量获取：有 `latest_time` 时提前停止翻页并只保留更新记录
+- 卡池翻页安全上限 100 → 500，触顶时明确警告
+- 启动时按 `schema_version` 决定是否全量重算保底，不再每次扫全表
+- `Config.save()` 只写相对默认值/全局配置有差异的用户键
+
+### Added
+- 恢复核心单元测试：`tests/test_analyzer.py`、`tests/test_database.py`、`tests/test_models.py`
+
+### Removed
+- 删除未使用的遗留模块：`gacha_engine.py`、`simulator.py`、`pity_analyzer.py`、`history.py`、`banner_config.py`
+- 清理 core/fetchers/ui 中解释基础语法的冗长注释
 
 ## [1.2.1] - 2026-08-14
 ### Fixed

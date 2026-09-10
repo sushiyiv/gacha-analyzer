@@ -4,6 +4,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+import hashlib
+
+
+def make_item_id(game: str, pool_type: str, time: str, item_name: str,
+                 seq: int = 0, extra: str = "") -> str:
+    """生成稳定的伪 item_id（导入数据缺少官方 id 时使用）。
+
+    UNIQUE(account_id, item_id) 要求同一账号内不为空且互不相同。
+    同秒/同名记录通过 seq 区分；extra 可附加池名等上下文。
+    """
+    raw = f"{game}|{pool_type}|{time}|{item_name}|{extra}|{seq}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
 class Game(Enum):

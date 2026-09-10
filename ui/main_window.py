@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
 
         nav_layout.addStretch()
 
-        version = QLabel("v1.2.2")
+        version = QLabel("v1.2.3")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: #bbb; font-size: 11px; padding: 8px;")
         nav_layout.addWidget(version)
@@ -312,11 +312,15 @@ class MainWindow(QMainWindow):
         return self._page_map[name]
 
     def _on_nav_changed(self, page: str):
-        widget = self._ensure_page(page)
-        self.page_stack.setCurrentWidget(widget)
-        for key, btn in self.nav_buttons.items():
-            btn.setChecked(key == page)
-        self._refresh_current_page()
+        self.page_stack.setUpdatesEnabled(False)
+        try:
+            widget = self._ensure_page(page)
+            self.page_stack.setCurrentWidget(widget)
+            for key, btn in self.nav_buttons.items():
+                btn.setChecked(key == page)
+            self._refresh_current_page()
+        finally:
+            self.page_stack.setUpdatesEnabled(True)
 
     def _refresh_current_page(self):
         page = self.page_stack.currentWidget()

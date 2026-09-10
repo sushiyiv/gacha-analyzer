@@ -5,11 +5,18 @@
 data/gacha_records.db
 data/gacha_records.db-shm
 data/gacha_records.db-wal
+data/gacha_records.db.bak
 data/gacha.db
 data/backups/
 data/exports/
 data/user_config.yaml
 data/data/
+# 误生成在项目根目录的库文件
+/gacha.db
+/gacha_data.db
+/gacha_records.db
+/gacha_records.db-shm
+/gacha_records.db-wal
 
 # ===== 日志 =====
 debug_*.log
